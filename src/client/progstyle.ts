@@ -2,6 +2,8 @@
 // Smooth, anti-aliased dark-gothic look. Typefaces come from the look agent's --font-title /
 // --font-body variables when defined, with serif fallbacks.
 
+import { actionLabel } from "./keybinds";
+
 const CSS = `
 .pg-root { --pg-title: var(--font-title, "Cinzel", "Trajan Pro", "Palatino Linotype", "Book Antiqua", Georgia, serif);
   --pg-body: var(--font-body, "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif);
@@ -24,6 +26,34 @@ const CSS = `
 .pg-x { position: absolute; top: 10px; right: 12px; width: 28px; height: 28px; border-radius: 50%; cursor: pointer;
   background: rgba(0,0,0,0.4); border: 1px solid rgba(216,179,106,0.35); color: var(--pg-dim); font: 16px/26px var(--pg-body); text-align: center; }
 .pg-x:hover { color: #fff; border-color: var(--pg-gold); }
+
+/* ---- shared docked-panel chrome (inventory, character, skills, social, tree): one header, one close
+   button, one keybind chip, one section heading, one button style. Panels paint the HUD skin behind. */
+.pc-head { position: relative; flex: none; display: flex; align-items: center; justify-content: center; box-sizing: border-box;
+  height: 36px; padding: 0 44px; margin: 0; font: 700 15px/1 var(--font-title, "Cinzel", "Trajan Pro", "Palatino Linotype", Georgia, serif);
+  letter-spacing: 0.3em; text-transform: uppercase; color: #e0c27a; white-space: nowrap; user-select: none;
+  text-shadow: 0 1px 0 #000, 0 0 14px rgba(224,150,60,0.28);
+  background: linear-gradient(90deg, transparent, rgba(216,184,96,0.5) 18%, rgba(216,184,96,0.5) 82%, transparent) bottom / 100% 1px no-repeat; }
+.pc-head .pc-t { overflow: hidden; text-overflow: ellipsis; padding-left: 0.3em; }
+.pc-key { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); min-width: 14px; padding: 2px 5px; border-radius: 3px;
+  font: 600 10px/1.2 var(--font-body, "Palatino Linotype", Georgia, serif); letter-spacing: 0.04em; text-transform: none; color: #b8a47a; text-align: center;
+  background: linear-gradient(180deg, #221c18, #0f0c0b); box-shadow: inset 0 0 0 1px rgba(216,184,96,0.32), 0 1px 0 rgba(0,0,0,0.8); text-shadow: none; }
+.pc-x { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; padding: 0; border-radius: 3px; cursor: pointer;
+  font: 15px/22px var(--font-body, "Palatino Linotype", Georgia, serif); text-align: center; color: #a89474; letter-spacing: 0;
+  background: linear-gradient(180deg, #2a2220, #120e0d); border: 1px solid rgba(216,184,96,0.35); box-shadow: inset 0 1px 0 rgba(255,230,190,0.07), 0 1px 2px rgba(0,0,0,0.8);
+  transition: color .1s, border-color .1s, box-shadow .1s; }
+.pc-x:hover { color: #fff0d0; border-color: #d8b36a; box-shadow: 0 0 8px rgba(216,179,106,0.35); }
+.pc-x:active { transform: translateY(-50%) scale(0.92); background: linear-gradient(180deg, #120e0d, #2a2220); }
+.pc-sec { display: flex; align-items: center; gap: 8px; margin: 12px 0 6px; font: 600 11px/1 var(--font-title, "Cinzel", Georgia, serif);
+  letter-spacing: 0.2em; text-transform: uppercase; color: #c8a060; }
+.pc-sec::before, .pc-sec::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, transparent, rgba(216,179,106,0.4)); }
+.pc-sec::after { background: linear-gradient(90deg, rgba(216,179,106,0.4), transparent); }
+.pc-sec small { font: 11px var(--font-body, "Palatino Linotype", Georgia, serif); letter-spacing: 0.02em; text-transform: none; color: #8a7f6c; }
+.pc-btn { font: 600 11px/1.2 var(--font-title, "Cinzel", Georgia, serif); letter-spacing: 0.08em; cursor: pointer; color: #e8d8b0; padding: 4px 9px; border-radius: 3px;
+  background: linear-gradient(180deg, #3a2c20, #1e1610); border: 1px solid #8a6a3a; box-shadow: inset 0 1px 0 rgba(255,230,190,0.1), 0 1px 2px rgba(0,0,0,0.7); }
+.pc-btn:hover:not(:disabled) { border-color: #e0c070; color: #fff2d0; box-shadow: 0 0 8px rgba(224,180,90,0.35), inset 0 1px 0 rgba(255,230,190,0.15); }
+.pc-btn:active:not(:disabled) { background: linear-gradient(180deg, #1e1610, #3a2c20); transform: translateY(1px); }
+.pc-btn:disabled { opacity: 0.45; cursor: default; }
 
 /* Tooltip */
 .pg-tip { position: fixed; z-index: 70; pointer-events: none; max-width: 320px; padding: 10px 13px; display: none;
@@ -89,6 +119,34 @@ export function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, 
   if (cls) e.className = cls;
   if (text != null) e.textContent = text;
   return e;
+}
+
+/**
+ * Shared docked-panel header: centred title, the panel's key on the left (from the live key binds),
+ * a close button on the right. `action` is the keybinds action id ("inventory", "skills", ...).
+ */
+export function panelHead(title: string, action: string | null, onClose: () => void): HTMLDivElement {
+  ensureProgStyle();
+  const h = el("div", "pc-head");
+  h.append(el("span", "pc-t", title));
+  if (action) {
+    const k = actionLabel(action);
+    if (k && k !== "-") {
+      const kc = el("span", "pc-key", k);
+      kc.title = "Toggle key";
+      h.append(kc);
+    }
+  }
+  const x = el("button", "pc-x", "×");
+  x.type = "button";
+  x.title = "Close";
+  x.addEventListener("mousedown", (e) => e.stopPropagation());
+  x.addEventListener("click", (e) => {
+    e.stopPropagation();
+    onClose();
+  });
+  h.append(x);
+  return h;
 }
 
 /** Shared tooltip element. */

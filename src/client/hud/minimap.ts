@@ -14,6 +14,7 @@ import { hudState } from "./state";
 import { getSettings, setSetting } from "../settings";
 import { actionLabel, actionsForPress } from "../keybinds";
 import { areaAt, currentMap, getCampSpots, getPois, ZONE, zoneAt, type Area } from "../../shared/map";
+import { laneTravel, laneWaypoints } from "../lanehud";
 import { isoX, isoY, K, unproject } from "../gfx/iso";
 import { itemCategory } from "../../shared/grid";
 import { RARITY_COLORS } from "../../shared/content/loot";
@@ -46,7 +47,7 @@ let waypoint: Pt | null = null;
 let zoomHover: -1 | 0 | 1 = 0; // which minimap zoom button the mouse is over (from the last HUD pass)
 let lastOverlay: { t: number; ox: number; oy: number; cx: number; cy: number; k: number } | null = null;
 let lastBig: { t: number; ox: number; oy: number; wx: number; wy: number; k: number; box: HudRect } | null = null;
-let lastMini: { t: number; r: HudRect } | null = null;
+let lastMini: { t: number; r: HudRect; ox: number; oy: number; cx: number; cy: number; k: number } | null = null;
 let lastPhase = "";
 
 export function getWaypoint(): Pt | null {
@@ -495,6 +496,30 @@ function drawMarkers(g: CanvasRenderingContext2D, v: View, to: ToFn, s: number, 
     const q = to(waypoint.x, waypoint.y);
     glyphWaypoint(g, q.x, q.y, 1.4 * s);
   }
+  // Breachway waypoints: your team's (bright while standing, a hollow ring once fallen), the enemy's dim.
+  for (const w of laneWaypoints()) {
+    const q = to(w.x, w.y);
+    if (!w.mine) {
+      if (w.up) glyphDiamond(g, q.x, q.y, 0.9 * s, w.color + "88");
+      continue;
+    }
+    if (w.up) {
+      g.beginPath();
+      g.arc(q.x, q.y, 2.3 * s, 0, TAU);
+      g.fillStyle = "rgba(10,14,24,0.85)";
+      g.fill();
+      g.lineWidth = 0.6 * s;
+      g.strokeStyle = w.color;
+      g.stroke();
+      glyphDiamond(g, q.x, q.y, 1.25 * s, "#cfe6ff");
+    } else {
+      g.beginPath();
+      g.arc(q.x, q.y, 1.8 * s, 0, TAU);
+      g.lineWidth = 0.4 * s;
+      g.strokeStyle = "rgba(150,140,130,0.6)";
+      g.stroke();
+    }
+  }
   if (me && !o.noSelf) {
     const q = to(me.x, me.y);
     glyphArrow(g, q.x, q.y, 1.9 * s, screenDir(facing(me)), me.color);
@@ -574,7 +599,6 @@ export function drawHudMinimap(g: CanvasRenderingContext2D, v: View, api: MapApi
   const L = getHudLayout();
   const r = L.minimap;
   if (isRightDockOpen()) return r.y + r.h + 10; // the docked inventory covers the map corner
-  lastMini = { t: nowMs(), r };
   const ui = getSettings().interface;
   const m = currentMap();
   const self = selfOf(v);
@@ -584,6 +608,7 @@ export function drawHudMinimap(g: CanvasRenderingContext2D, v: View, api: MapApi
   const ox = r.x + r.w / 2;
   const oy = r.y + r.h / 2;
   const to = toFn(ox, oy, cx, cy, k);
+  lastMini = { t: nowMs(), r, ox, oy, cx, cy, k };
 
   g.save();
   g.globalAlpha = clamp(0.2, 1, ui.minimapOpacity ?? 1);
@@ -917,6 +942,45 @@ export function installMapInput(): void {
     if (ids.includes("minimapZoomIn")) mapZoomStep(1);
     else if (ids.includes("minimapZoomOut")) mapZoomStep(-1);
   });
+  // Breachway: left-click one of your waypoints on the corner map, the world map or the overlay to travel there.
+  window.addEventListener(
+    "mousedown",
+    (e) => {
+      if (!hudState.joined || e.button !== 0 || !(e.target instanceof HTMLCanvasElement)) return;
+      const list = laneWaypoints().filter((w) => w.mine && w.up);
+      if (!list.length) return;
+      const h = toHudUnits(e.clientX, e.clientY);
+      let at: Pt | null = null;
+      let k = 1;
+      if (bigOpen() && lastBig) {
+        const b = lastBig;
+        if (h.x < b.box.x || h.y < b.box.y || h.x > b.box.x + b.box.w || h.y > b.box.y + b.box.h) return;
+        at = fromScreen(h.x, h.y, b.ox, b.oy, b.wx, b.wy, b.k);
+        k = b.k;
+      } else if (overlayOpen() && lastOverlay) {
+        const o = lastOverlay;
+        at = fromScreen(h.x, h.y, o.ox, o.oy, o.cx, o.cy, o.k);
+        k = o.k;
+      } else if (lastMini && nowMs() - lastMini.t < 250) {
+        const m = lastMini;
+        if (h.x < m.r.x || h.y < m.r.y || h.x > m.r.x + m.r.w || h.y > m.r.y + m.r.h) return;
+        at = fromScreen(h.x, h.y, m.ox, m.oy, m.cx, m.cy, m.k);
+        k = m.k;
+      }
+      if (!at) return;
+      const reach = Math.max(140, 5 / k);
+      let best: { k: string; d: number } | null = null;
+      for (const w of list) {
+        const d = Math.hypot(w.x - at.x, w.y - at.y);
+        if (d < reach && (!best || d < best.d)) best = { k: w.k, d };
+      }
+      if (!best) return;
+      laneTravel(best.k);
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    },
+    true,
+  );
   // Waypoint clicks on the world map / overlay (capture: runs before the canvas skill input).
   window.addEventListener(
     "mousedown",

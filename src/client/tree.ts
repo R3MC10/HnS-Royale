@@ -14,6 +14,7 @@ import { drawClassEmblem } from "./classpick";
 import { drawPassiveIcon, passiveIconReady } from "./gfx/treeart";
 import { onProgChange, progState } from "./prog";
 import { el, ensureProgStyle, esc, hideTip, showTip } from "./progstyle";
+import { actionLabel } from "./keybinds";
 
 const CSS = `
 #pg-tree { position: fixed; inset: 0; z-index: 40; display: none; flex-direction: column; overflow: hidden; border-radius: 0; border: none; }
@@ -25,7 +26,8 @@ const CSS = `
 #pg-tree .found { font-size: 12px; color: var(--pg-dim); min-width: 5em; }
 /* Full screen: the HUD (skill bar, XP, trial bar) hides behind the tree; the canvas HUD can read isTreeOpen(). */
 body.pg-tree-open #skbar, body.pg-tree-open #pg-hud, body.pg-tree-open #pg-hon { visibility: hidden !important; }
-#pg-tree .top { display: flex; align-items: center; gap: 14px; padding: 12px 56px 10px 18px; border-bottom: 1px solid var(--pg-line); }
+#pg-tree .top { position: relative; display: flex; align-items: center; gap: 14px; padding: 12px 52px 10px 18px; border-bottom: 1px solid var(--pg-line); }
+#pg-tree .top .pc-key { position: static; transform: none; }
 #pg-tree .top .pg-title { font-size: 20px; }
 #pg-tree .tabs { display: flex; gap: 6px; margin-left: 10px; }
 #pg-tree .pts { margin-left: auto; font-family: var(--pg-title); letter-spacing: 0.12em; font-size: 13px; color: var(--pg-dim); text-transform: uppercase; }
@@ -160,14 +162,24 @@ function build() {
   });
   searchEl.addEventListener("keyup", (e) => e.stopPropagation());
   top.append(title, tabs, searchEl, foundEl, ptsEl);
-  const x = el("button", "pg-x", "×");
+  // shared panel chrome (progstyle .pc-key / .pc-x): the toggle key and the close button, right of the points
+  const key = actionLabel("tree");
+  if (key && key !== "-") {
+    const kc = el("span", "pc-key", key);
+    kc.title = "Toggle key";
+    top.append(kc);
+  }
+  const x = el("button", "pc-x", "×");
+  x.type = "button";
+  x.title = "Close";
   x.addEventListener("click", () => toggleTree(false));
+  top.append(x);
   const body = el("div", "body");
   canvas = el("canvas", "view");
   overlay = el("div");
   hintEl = el("div", "hint", "Drag to pan · wheel to zoom · Ctrl+F to search · click a node to allocate (a far node takes the whole path) · no refunds this match · drag jewels from the inventory (I) onto allocated sockets, right-click to remove");
   body.append(canvas, overlay, hintEl);
-  root.append(top, body, x);
+  root.append(top, body);
   document.body.append(root);
   // Stop game input while the panel is under the mouse.
   for (const ev of ["mousedown", "mouseup", "click", "contextmenu", "wheel"]) root.addEventListener(ev, (e) => e.stopPropagation());

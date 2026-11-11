@@ -45,6 +45,7 @@ import {
   progDevCommand,
   progOnMonsterKilled,
   progOnPlayerKilled,
+  trialKill,
   progressionTick,
   removeProgression,
   resetProgression,
@@ -398,6 +399,7 @@ export class Game implements CombatHost {
     if (this.lanes) {
       // Breachway: the wave purse replaces monster XP and drops.
       this.lanes.onUnitDied(m, killer);
+      trialKill(m); // the ascendancy trial's guard / Warden (lane units pass through untouched)
       this.addCharges(killer, CHARGES_NORMAL_KILL);
       return;
     }
@@ -713,6 +715,9 @@ export class Game implements CombatHost {
       }
       case "hp":
         if (p.alive) p.hp = Math.max(1, Math.min(p.stats.maxHp, num(msg.v, p.hp)));
+        break;
+      case "lanegold": // Breachway dev: add gold
+        this.lanes?.addGold(p, num(msg.v, 1000));
         break;
       case "lanefell": // Breachway dev: knock down the enemy team's front-most standing structure
         this.lanes?.devFell(p);

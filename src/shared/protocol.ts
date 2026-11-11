@@ -85,6 +85,7 @@ export interface MonsterSnap {
   cl?: string; // rogue exile colour
   rl?: 1; // rogue exile is dodge-rolling
   tm?: 0 | 1; // Breachway lane mode: team (mobs, exiles, structures)
+  fc?: number; // Breachway spire / Core: id of the hero it is shooting at
 }
 
 export interface ProjSnap {
@@ -157,7 +158,9 @@ export type GameEvent =
   | { k: "evade"; target: number; x: number; y: number; cd?: 1 } // hit evaded (cd: cheat death / second wind)
   | { k: "fx"; f: SkillFx } // skill effect (shared/skills.ts)
   | { k: "def"; target: number; x: number; y: number; o: "evade" | "block" | "deflect" | "immune"; m?: 1 } // hit avoided (server/damage.ts)
-  | { k: "ail"; target: number; a: AilmentKind; x: number; y: number; m?: 1 }; // ailment triggered (server/damage.ts)
+  | { k: "ail"; target: number; a: AilmentKind; x: number; y: number; m?: 1 } // ailment triggered (server/damage.ts)
+  | { k: "gold"; id: number; n: number } // Breachway: player `id` was paid n gold (kill / assist / wave purse / structure)
+  | { k: "wp"; id: number; x: number; y: number; x2: number; y2: number }; // Breachway: player `id` travelled by waypoint
 
 /** Where an inventory item can be equipped: a gear slot or a flask slot (0..2). */
 export type EquipTarget = Slot | `flask${0 | 1 | 2}` | `charm${0 | 1 | 2}`;
@@ -192,7 +195,10 @@ export type ClientMsg =
   | { t: "chat"; text: string; to?: string; item?: number }
   | { t: "dev"; cmd: string; [k: string]: unknown } // only when the server runs with HNS_DEV=1
   // Breachway shop (server/modes/lanes.ts): gamble a slot, buy a rough crystal (lv: crystal level / support tier), sell item `id`.
-  | { t: "shop"; a: "gamble" | "skill" | "support" | "spirit" | "sell"; slot?: string; lv?: number; id?: number };
+  // enhance: gold service `k` (shared/laneshop.ts EnhanceKind) on owned item `id` (rune: socket rune id `rune`);
+  // fund: put `n` gold into this team's pot for reinforcement unit `k`.
+  | { t: "wp"; to: string } // Breachway: travel to your team's waypoint `to` (server/modes/lanes.ts waypoint)
+  | { t: "shop"; a: "gamble" | "skill" | "support" | "spirit" | "sell" | "enhance" | "fund"; slot?: string; lv?: number; id?: number; k?: string; rune?: string; n?: number };
 
 /** Breachway HUD state for one player. */
 export interface LaneMsg {
@@ -209,6 +215,17 @@ export interface LaneMsg {
   dead: number; // seconds to respawn (0 = alive)
   shop: 0 | 1; // shop usable now (on your platform or dead)
   win?: 0 | 1; // winning team once a Core falls
+  /** Reinforcement pots of your team: [unit, gold in pot, price, top contributors "name:gold,..."]. */
+  rf?: [string, number, number, string][];
+  /** Purchased units queued for your team's next wave (cap REINF_CAP). */
+  rq?: number;
+  /** Your team's standing waypoints (shared/lanes.ts WaypointKind). */
+  wp?: string[];
+  /** Standing at one of your waypoints (or on your platform): travel is possible. */
+  wa?: 1;
+  /** Waypoint travel in progress: seconds left and the target. */
+  ch?: number;
+  cto?: string;
 }
 
 export interface SnapMsg {

@@ -10,15 +10,25 @@ import { isGem } from "../../shared/skills";
 import { ROUGH_SKILL, ROUGH_SPIRIT, ROUGH_SUPPORT } from "../../shared/content/gems";
 import type { Item, Rarity } from "../../shared/items";
 import {
-  GAMBLE_BASE, LANE, LANE_LEVEL_CAP, SELL_FRACTION, SPIRIT_LEVEL, SPIRIT_PRICE, STRUCT_KINDS, STRUCT_X, SUPPORT_TIERS, TEAM_NAMES, TEAM_PLAYER_COLORS,
+  ASSIST_WINDOW, CORE_RANGE, GAMBLE_BASE, LANE, LANE_LEVEL_CAP, SELL_FRACTION, SPIRE_RANGE, SPIRIT_LEVEL, SPIRIT_PRICE, STRUCT_KINDS, STRUCT_X, SUPPORT_TIERS, TEAM_NAMES, TEAM_PLAYER_COLORS,
   gamblePrice, laneSellValue, maxCrystalLevel, onPlatform, skillCrystalPrice, type StructKind, type Team,
 } from "../../shared/lanes";
 import type { LaneMsg } from "../../shared/protocol";
+import {
+  ENHANCE_KINDS, REINF_CAP, REINF_KINDS, REINF_NAME, enhanceBlock, enhancePrice, forgeStep, qualityCur, reinfPrice, runesFor, uniquesFor,
+  type EnhanceKind, type ReinfKind,
+} from "../../shared/laneshop";
+import { CURRENCY_BY_ID, MAX_QUALITY } from "../../shared/content/currency";
+import { applyEffect, applyRune, findOwned, makeUnique } from "../crafting";
+import { refreshStats } from "../inventory";
 import { chooseAttack, integrate, startAttack, stepWindup } from "../ai/brain";
 import type { Game } from "../game";
 import { autoPlace, carriedItem, dropById, storeItem } from "../inventory";
 import { rollFlask, rollItem } from "../loot";
-import type { Monster, MonsterSystem, Projectile } from "../monsters";
+import type { Camp, Monster, MonsterSystem, Projectile } from "../monsters";
+import { esOf } from "../damage";
+import { isWalkable } from "../../shared/map";
+import { WAYPOINT_CHANNEL, WAYPOINT_KINDS, WAYPOINT_USE_R, waypointAt, type WaypointKind } from "../../shared/lanes";
 import type { ServerPlayer } from "../player";
 import { gainXp, levelCap, playerLevel } from "../progression";
 import { makeRough } from "../skills";
@@ -50,16 +60,24 @@ interface Unit {
   boltOn: number; // id of the player the last bolts hit
   boltN: number; // consecutive bolts on that player
   hitT: number; // fight time of the last hit taken (Core regen)
+  // exiles: march pace relative to the wave (exilePace)
+  pace: number;
+  paceT: number;
 }
 
 /** Doc section 5 / 6 / 7 numbers. */
 const N = {
   firstWave: 30,
-  march: 150,
+  /** Wave walking speed (was 150 on the 7168-wide map; 200 keeps first contact near 23 s on the 12288 one). */
+  march: 200,
+  /** Jungle camps: gold per kill by rarity, xp per kill (x lane level), refill delay after a clear. */
+  campGold: [16, 40, 90],
+  campXp: [8, 18, 40],
+  campRespawn: 60,
   aggro: 380,
   offLane: 500,
-  spireRange: 520,
-  coreRange: 650,
+  spireRange: SPIRE_RANGE,
+  coreRange: CORE_RANGE,
   boltEvery: 1.2,
   boltSpeed: 700,
   boltMob: 0.3,
@@ -79,6 +97,8 @@ const N = {
   xpPassive: 0.6,
   purseR: 1200,
   killGold: 120,
+  /** Each ally of the killer who hurt the victim in the last ASSIST_WINDOW s. */
+  assistGold: 50,
   exileGold: 100,
   exileLife: 2.5,
   structGold: { lane_outer: 80, lane_inner: 120, lane_ward: 160, lane_core: 0 } as Record<StructKind, number>,
@@ -109,7 +129,18 @@ export class LaneMode {
   private readonly pity = new Map<number, number>();
   /** Enemy player id -> fight time they last hit a player of the other team (spire call for help). */
   private readonly pvpAt = new Map<number, number>();
+  /** Victim player id -> attacker id -> fight time of the attacker's last hit on them (assists). */
+  private readonly hurtBy = new Map<number, Map<number, number>>();
   private teamSize = 1;
+  /** Jungle camps (one per LANE.glades entry) and their refill timers (fight time, 0 = not cleared). */
+  private jungle: { camp: Camp; tier: number; clearedAt: number }[] = [];
+  private readonly jungleMons = new Set<Monster>();
+  /** Waypoint travel in progress: target, finish time, life + shield when it started (damage cancels). */
+  private readonly chan = new Map<number, { to: WaypointKind; at: number; hp: number; fx: number; fy: number }>();
+  /** Reinforcement pots per team per unit: gold in the pot and who put it there (name -> gold). */
+  private readonly pots: [Map<ReinfKind, { have: number; who: Map<string, number> }>, Map<ReinfKind, { have: number; who: Map<string, number> }>] = [new Map(), new Map()];
+  /** Funded units waiting for each team's next wave. */
+  private readonly queued: [ReinfKind[], ReinfKind[]] = [[], []];
 
   constructor(private readonly g: Game) {}
 
@@ -131,6 +162,7 @@ export class LaneMode {
     laneHook.think = (sys, m, players) => this.think(sys, m, players);
     laneHook.incoming = (m, dmg, by) => this.incoming(m, dmg, by);
     laneHook.friendly = (t, by, mon) => this.friendly(t, by, mon);
+    laneHook.trialSpawn = (m) => this.setLevel(m, this.laneLevel());
     levelCap.v = LANE_LEVEL_CAP;
     const sys = this.g.monsters;
     sys.camps = [];
@@ -138,6 +170,109 @@ export class LaneMode {
     sys.projectiles = [];
     sys.hazards = [];
     for (const team of [0, 1] as Team[]) for (const k of STRUCT_KINDS) this.spawnStruct(team, k);
+    // Jungle camps: registered with the monster system (camp snapshots, minimap status), filled here.
+    this.jungle = LANE.glades.map((gl, i) => {
+      const camp: Camp = { id: 9000 + i, x: gl.x, y: gl.y, monsters: [], clearedFor: 0, tier: gl.tier };
+      sys.camps.push(camp);
+      return { camp, tier: gl.tier, clearedAt: 0 };
+    });
+    for (const j of this.jungle) this.fillCamp(j);
+  }
+
+  private fillCamp(j: { camp: Camp; tier: number; clearedAt: number }) {
+    const [rushT, rangedT] = this.families().map((id) => MONSTER_BY_ID.get(id)!) as [MonsterType, MonsterType];
+    const lvl = this.laneLevel() + j.tier;
+    const list: [MonsterType, 0 | 1 | 2][] = [[rushT, 0], [rushT, 0], [rangedT, 0], [rushT, 1]];
+    if (j.tier) list.push([rangedT, 0], [rushT, 2]);
+    list.forEach(([t, r], i) => {
+      const a = (i / list.length) * Math.PI * 2;
+      let at = { x: j.camp.x + Math.cos(a) * 90, y: j.camp.y + Math.sin(a) * 60 };
+      if (!isWalkable(at.x, at.y, 30)) at = { x: j.camp.x, y: j.camp.y };
+      const m = this.g.monsters.spawnMonster(j.camp, t, r === 2, at, r);
+      this.setLevel(m, lvl);
+      this.jungleMons.add(m);
+    });
+    j.clearedAt = 0;
+  }
+
+  private jungleTick() {
+    for (const j of this.jungle) {
+      if (j.camp.monsters.some((m) => m.alive)) continue;
+      if (!j.clearedAt) j.clearedAt = this.t;
+      else if (this.t - j.clearedAt >= N.campRespawn && !this.g.joined.some((p) => p.alive && Math.hypot(p.x - j.camp.x, p.y - j.camp.y) < 700)) this.fillCamp(j);
+    }
+  }
+
+  /** A jungle monster died: the killer is paid, allies near it share some experience. */
+  private jungleKill(m: Monster, killer: ServerPlayer | null) {
+    this.jungleMons.delete(m);
+    if (!killer || killer.team === undefined) return;
+    const r = Math.min(2, (m as unknown as { rarity?: number }).rarity ?? (m.elite ? 2 : 0));
+    this.addGold(killer, N.campGold[r], true);
+    const xp = N.campXp[r] * (1 + 0.15 * this.laneLevel());
+    this.addXp(killer, xp);
+    for (const p of this.g.joined) if (p !== killer && p.alive && p.team === killer.team && Math.hypot(p.x - m.x, p.y - m.y) < 900) this.addXp(p, xp * 0.5);
+  }
+
+  // ---- waypoints ---------------------------------------------------------------------------------
+
+  /** Own waypoints standing now (base always; the others while their structure stands). */
+  standingWaypoints(team: Team): WaypointKind[] {
+    return WAYPOINT_KINDS.filter((k) => k === "base" || !!this.structs[team].get(k));
+  }
+
+  /** Start travelling to waypoint `to`: stand at one of your team's waypoints, 2 s channel, damage cancels. */
+  waypoint(p: ServerPlayer, to: unknown): string | null {
+    if (p.team === undefined || !p.alive) return "Not now";
+    const team = p.team as Team;
+    const k = String(to ?? "") as WaypointKind;
+    const up = this.standingWaypoints(team);
+    if (!WAYPOINT_KINDS.includes(k)) return "No such waypoint";
+    if (!up.includes(k)) return "That waypoint has fallen with its structure";
+    if (!this.atWaypoint(p)) return "Stand at one of your waypoints to travel";
+    const dest = waypointAt(team, k);
+    if (Math.hypot(dest.x - p.x, dest.y - p.y) < WAYPOINT_USE_R) return "You are already there";
+    this.chan.set(p.id, { to: k, at: this.t + WAYPOINT_CHANNEL, hp: p.hp + esOf(p), fx: p.x, fy: p.y });
+    return null;
+  }
+
+  /** Within WAYPOINT_USE_R of one of your standing waypoints, or on your platform. */
+  private atWaypoint(p: ServerPlayer): boolean {
+    if (p.team === undefined) return false;
+    const team = p.team as Team;
+    return onPlatform(team, p.x, p.y) || this.standingWaypoints(team).some((w) => { const q = waypointAt(team, w); return Math.hypot(q.x - p.x, q.y - p.y) < WAYPOINT_USE_R; });
+  }
+
+  private waypointTick() {
+    for (const [id, c] of this.chan) {
+      const p = this.g.players.get(id);
+      const team = p?.team as Team | undefined;
+      if (!p || team === undefined || !p.alive) {
+        this.chan.delete(id);
+        continue;
+      }
+      const life = p.hp + esOf(p);
+      let why = "";
+      if (life < c.hp - 0.5) why = "Travel interrupted: you took damage";
+      else if (Math.hypot(p.x - c.fx, p.y - c.fy) > WAYPOINT_USE_R + 80) why = "Travel cancelled: you walked away";
+      else if (!this.standingWaypoints(team).includes(c.to)) why = "Travel cancelled: that waypoint has fallen";
+      c.hp = Math.max(c.hp, life);
+      if (why) {
+        this.chan.delete(id);
+        this.g.toast(p, why);
+        continue;
+      }
+      if (this.t < c.at) continue;
+      this.chan.delete(id);
+      const d = waypointAt(team, c.to);
+      const x0 = Math.round(p.x);
+      const y0 = Math.round(p.y);
+      p.x = d.x + (Math.random() - 0.5) * 60;
+      p.y = d.y + 70 + (Math.random() - 0.5) * 40;
+      p.kbx = 0;
+      p.kby = 0;
+      this.g.events.push({ k: "wp", id: p.id, x: x0, y: y0, x2: Math.round(p.x), y2: Math.round(p.y) });
+    }
   }
 
   stop() {
@@ -145,6 +280,7 @@ export class LaneMode {
     laneHook.think = null;
     laneHook.incoming = null;
     laneHook.friendly = null;
+    laneHook.trialSpawn = null;
     levelCap.v = MAX_LEVEL;
     for (const p of this.g.players.values()) p.team = undefined;
   }
@@ -156,7 +292,7 @@ export class LaneMode {
 
   private newUnit(m: Monster, team: Team, kind: Kind): Unit {
     m.team = team;
-    const u: Unit = { m, team, kind, w: 1, gold: 0, xp: 0, laneY: LANE.y, aggroP: -1, aggroT: 0, tu: null, scanT: 0, fireT: 0, boltOn: -1, boltN: 0, hitT: -99 };
+    const u: Unit = { m, team, kind, w: 1, gold: 0, xp: 0, laneY: LANE.y, aggroP: -1, aggroT: 0, tu: null, scanT: 0, fireT: 0, boltOn: -1, boltN: 0, hitT: -99, pace: 1, paceT: 0 };
     this.units.set(m, u);
     return u;
   }
@@ -248,6 +384,22 @@ export class LaneMode {
         u.laneY = at.y;
         m.state = 1;
       });
+      // Crowdfunded reinforcements (Quartermaster "Reinforcements" tab) march at the back of this wave.
+      const bought = this.queued[team].splice(0);
+      bought.forEach((k, i) => {
+        const t = k === "archer" ? rangedT : rushT;
+        const r: 0 | 1 | 2 = k === "champion" ? 2 : 1;
+        const at = { x: LANE.mobX[team] - dir * (130 + i * 34), y: LANE.y + (i - 1) * 50 };
+        const m = this.g.monsters.spawnLoose(t, at, false, r);
+        this.setLevel(m, lvl + (k === "champion" ? 1 : 0));
+        const u = this.newUnit(m, team, "elite");
+        u.w = r === 2 ? 5 : 3;
+        // A bought unit is worth little to whoever kills it (no gold farm off the enemy's purse).
+        u.gold = 4;
+        u.xp = purseXp / weight;
+        u.laneY = at.y;
+        m.state = 1;
+      });
       // Rogue exiles while the enemy Ward is down (doc 6.1).
       if (!this.structs[(1 - team) as Team].get("lane_ward")) this.spawnExile(team);
     }
@@ -259,8 +411,8 @@ export class LaneMode {
     if (alive >= 1 + Math.floor(this.teamSize / 2)) return;
     const t = MONSTER_BY_ID.get("rogue_exile");
     if (!t) return;
-    const front = STRUCT_KINDS.map((k) => this.structs[team].get(k)).find((u) => u);
-    const x = front ? front.m.x + (team === 0 ? 120 : -120) : LANE.mobX[team];
+    // In the middle of the wave that just spawned (spawnWave), so it marches with it.
+    const x = LANE.mobX[team] - (team === 0 ? 1 : -1) * 45;
     const m = this.g.monsters.spawnLoose(t, { x, y: LANE.y + 60 }, false, 3);
     this.setLevel(m, Math.min(LANE_LEVEL_CAP + 2, this.laneLevel() + 2));
     m.maxHp *= N.exileLife; // a five-hero defence used to melt one in seconds
@@ -309,6 +461,9 @@ export class LaneMode {
     if (by && by !== t) {
       if (by.team === t.team) return true;
       this.pvpAt.set(by.id, this.t);
+      let hb = this.hurtBy.get(t.id);
+      if (!hb) this.hurtBy.set(t.id, (hb = new Map()));
+      hb.set(by.id, this.t);
       return false;
     }
     if (mon) {
@@ -341,6 +496,7 @@ export class LaneMode {
 
   /** A lane unit died (from Game.onMonsterKilled for player kills, or hurtUnit). */
   onUnitDied(m: Monster, killer: ServerPlayer | null) {
+    if (this.jungleMons.has(m)) return this.jungleKill(m, killer);
     const u = this.units.get(m);
     if (!u) return;
     this.units.delete(m);
@@ -350,10 +506,11 @@ export class LaneMode {
       this.structs[u.team].set(k, null);
       const by = (1 - u.team) as Team;
       this.g.events.push({ k: "info", text: `${TEAM_NAMES[by]} destroyed the ${TEAM_NAMES[u.team]} ${m.type.name}` });
-      for (const p of this.g.joined) if (p.team === by) this.addGold(p, N.structGold[k]);
+      for (const p of this.g.joined) if (p.team === by) this.addGold(p, N.structGold[k], true);
       if (k === "lane_ward") {
         this.wardBack[u.team] = this.t + N.wardRespawn;
-        this.spawnExile(by);
+        // Rogue exiles march with the breaker's next wave (spawnWave), not alone ahead of it.
+        this.g.events.push({ k: "info", text: `Rogue exiles will march with the ${TEAM_NAMES[by]} waves` });
       }
       if (k === "lane_core") this.winner = by;
       return;
@@ -361,7 +518,7 @@ export class LaneMode {
     if (u.kind === "exile") {
       const L = this.laneLevel();
       for (const p of enemies) if (Math.hypot(p.x - m.x, p.y - m.y) < N.purseR) {
-        this.addGold(p, N.exileGold);
+        this.addGold(p, N.exileGold, true);
         gainXp(p, 30 + 4 * L);
       }
       this.g.events.push({ k: "info", text: `${TEAM_NAMES[(1 - u.team) as Team]} slew a rogue exile` });
@@ -369,7 +526,7 @@ export class LaneMode {
     }
     // Wave purse: every living enemy player near the death shares the mob's part of the wave purse.
     for (const p of enemies) if (Math.hypot(p.x - m.x, p.y - m.y) < N.purseR) {
-      this.addGold(p, u.gold * u.w);
+      this.addGold(p, u.gold * u.w, true);
       this.addXp(p, u.xp * u.w);
     }
     if (killer && u.kind === "elite") this.g.events.push({ k: "info", text: `${killer.name} slew ${m.eliteName ?? m.type.name}` });
@@ -378,16 +535,33 @@ export class LaneMode {
   onPlayerKilled(victim: ServerPlayer, killer: ServerPlayer | null) {
     const lvl = playerLevel(victim);
     this.respawnAt.set(victim.id, this.t + Math.min(36, 6 + 1.5 * lvl));
+    const hb = this.hurtBy.get(victim.id);
+    this.hurtBy.delete(victim.id);
     if (victim.team !== undefined && killer && killer.team !== victim.team) {
       this.kills[killer.team!]++;
-      this.addGold(killer, N.killGold);
+      this.addGold(killer, N.killGold, true);
       gainXp(killer, 20 + 4 * lvl);
     } else if (victim.team !== undefined) this.kills[(1 - victim.team) as Team]++;
+    // Assists: every enemy of the victim (killer aside) who hurt them in the last ASSIST_WINDOW seconds.
+    if (hb && victim.team !== undefined) for (const [id, at] of hb) {
+      const a = this.g.players.get(id);
+      if (!a || a === killer || a.team === victim.team || this.t - at > ASSIST_WINDOW) continue;
+      this.addGold(a, N.assistGold, true);
+      gainXp(a, 10 + 2 * lvl);
+    }
   }
 
-  addGold(p: ServerPlayer, n: number) {
+  /** Credit gold; `pop` also tells that player's client (the "+N gold" popup over the hero). */
+  addGold(p: ServerPlayer, n: number, pop = false) {
     this.gold.set(p.id, (this.gold.get(p.id) ?? 0) + n);
+    if (!pop) return;
+    // Purse shares are fractions: carry the remainder so the popups add up to what was paid.
+    const acc = (this.popAcc.get(p.id) ?? 0) + n;
+    const whole = Math.floor(acc);
+    this.popAcc.set(p.id, acc - whole);
+    if (whole > 0) this.g.events.push({ k: "gold", id: p.id, n: whole });
   }
+  private readonly popAcc = new Map<number, number>();
 
   private addXp(p: ServerPlayer, n: number) {
     // Catch-up (doc 9): +15% per level below the match mean, up to +60%.
@@ -487,10 +661,31 @@ export class LaneMode {
       mvx = dx / d;
       mvy = dy / d;
       speed = N.march;
+      if (u.kind === "exile") speed *= this.exilePace(u, dir);
       m.angle = Math.atan2(mvy, mvx);
     }
     integrate(sys, m, mvx, mvy, speed);
     return true;
+  }
+
+  /**
+   * A marching exile keeps pace with its wave: it slows while ahead of the wave's middle and hurries
+   * while behind it (no wave-mates within 700 px: its own pace). Checked a few times a second.
+   */
+  private exilePace(u: Unit, dir: number): number {
+    u.paceT -= DT;
+    if (u.paceT > 0) return u.pace;
+    u.paceT = 0.3;
+    let sx = 0;
+    let n = 0;
+    for (const o of this.units.values()) {
+      if (o.team !== u.team || (o.kind !== "mob" && o.kind !== "elite") || !o.m.alive || Math.abs(o.m.x - u.m.x) > 700) continue;
+      sx += o.m.x;
+      n++;
+    }
+    if (!n) return (u.pace = 1);
+    const ahead = (u.m.x - sx / n) * dir;
+    return (u.pace = ahead > 50 ? 0.55 : ahead < -110 ? 1.3 : 1);
   }
 
   private onEnemyPlatform(u: Unit, x: number, y: number) {
@@ -537,6 +732,10 @@ export class LaneMode {
       }
       if (bestS) {
         u.tu = bestS;
+        return;
+      }
+      if (best) {
+        u.tu = best; // fights the enemy wave alongside its own instead of walking through it
         return;
       }
       if (bp) {
@@ -600,6 +799,11 @@ export class LaneMode {
     if (u.sk === "lane_core" && this.t - u.hitT > N.coreRegenDelay && m.hp < m.maxHp && !this.enemyNear(u.team, m.x, m.y, 1000)) m.hp = Math.min(m.maxHp, m.hp + m.maxHp * 0.01 * DT);
     const core = u.sk === "lane_core";
     const range = core ? N.coreRange : N.spireRange;
+    // Focus (snapshot `fc`: the client's targeting beam): drops as soon as that hero is dead or out of range.
+    if (m.focus) {
+      const fp = this.g.players.get(m.focus);
+      if (!fp || !fp.alive || Math.hypot(fp.x - m.x, fp.y - m.y) > range + PLAYER_RADIUS) m.focus = 0;
+    }
     u.fireT -= DT;
     if (u.fireT > 0) return;
     // Priority: an enemy player who just hit one of ours nearby, then mobs, then players.
@@ -638,8 +842,10 @@ export class LaneMode {
     }
     if (!tgtP && !tgtU) {
       u.boltN = 0;
+      m.focus = 0;
       return;
     }
+    m.focus = tgtP ? tgtP.id : 0;
     u.fireT = N.boltEvery / (core ? 1.5 : 1);
     if (tgtP) {
       if (u.boltOn === tgtP.id) u.boltN++;
@@ -727,6 +933,9 @@ export class LaneMode {
       }
       for (const u of this.structs[team].values()) if (u && u.m.alive) this.structTick(u);
     }
+    this.jungleTick();
+    this.waypointTick();
+    for (const m of this.jungleMons) if (!m.alive) this.jungleMons.delete(m);
     // Units that died some other way (DoT, passives) without passing through here.
     for (const [m] of this.units) if (!m.alive) this.onUnitDied(m, null);
     // Mobs pushed off the band (knockback) walk back; nothing to do: the brain steers to its line.
@@ -753,6 +962,15 @@ export class LaneMode {
       k: [...this.kills] as [number, number],
       dead: p.alive ? 0 : Math.max(0, Math.ceil((this.respawnAt.get(p.id) ?? this.t) - this.t)),
       shop: this.canShop(p) ? 1 : 0,
+      rf: REINF_KINDS.map((k) => {
+        const pot = this.pots[tm].get(k);
+        const who = pot ? [...pot.who].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([n, v]) => `${n}:${Math.round(v)}`).join(",") : "";
+        return [k, Math.floor(pot?.have ?? 0), reinfPrice(k, this.wave), who] as [string, number, number, string];
+      }),
+      rq: this.queued[tm].length,
+      wp: this.standingWaypoints(tm),
+      ...(p.alive && this.atWaypoint(p) ? { wa: 1 as const } : {}),
+      ...(this.chan.has(p.id) ? { ch: Math.max(0, Math.round((this.chan.get(p.id)!.at - this.t) * 10) / 10), cto: this.chan.get(p.id)!.to } : {}),
       ...(this.winner !== null ? { win: this.winner } : {}),
     };
   }
@@ -763,7 +981,7 @@ export class LaneMode {
 
   // ---- shop (doc section 8) ------------------------------------------------------------------------
 
-  shop(p: ServerPlayer, msg: { a?: unknown; slot?: unknown; lv?: unknown; id?: unknown }): string | null {
+  shop(p: ServerPlayer, msg: { a?: unknown; slot?: unknown; lv?: unknown; id?: unknown; k?: unknown; rune?: unknown; n?: unknown }): string | null {
     if (!this.canShop(p)) return "The Quartermaster only deals on your platform (or while you are dead).";
     const lvl = Math.min(LANE_LEVEL_CAP, playerLevel(p));
     const gold = this.gold.get(p.id) ?? 0;
@@ -817,10 +1035,14 @@ export class LaneMode {
         if (!pay(SPIRIT_PRICE)) return "Not enough gold";
         return give(makeRough(ROUGH_SPIRIT, Math.max(1, Math.floor(lvl / 2))), SPIRIT_PRICE);
       }
+      case "enhance":
+        return this.enhance(p, msg, pay);
+      case "fund":
+        return this.fund(p, String(msg.k ?? ""), Number(msg.n));
       case "sell": {
         const it = carriedItem(p, msg.id);
         if (!it) return "No such item";
-        if (Object.values(p.equip).includes(it)) return "Take it off first";
+        if (!p.inv.some((e) => e.it === it)) return "Take it off first"; // bag items only (not worn gear, belt flasks, charms)
         const value = this.sellValue(it);
         dropById(p, it.id, () => {});
         this.addGold(p, value);
@@ -829,6 +1051,112 @@ export class LaneMode {
       }
     }
     return "Nothing like that on offer";
+  }
+
+  // ---- Enhance: gold services on your own items (crafting.ts rules, unchanged) -----------------------
+
+  private enhance(p: ServerPlayer, msg: { id?: unknown; k?: unknown; rune?: unknown }, pay: (n: number) => boolean): string | null {
+    const k = String(msg.k ?? "") as EnhanceKind;
+    if (!ENHANCE_KINDS.includes(k)) return "Nothing like that on offer";
+    const own = findOwned(p, Number(msg.id));
+    if (!own) return "No such item";
+    const it = own.it;
+    const why = enhanceBlock(k, it);
+    if (why) return why;
+    const rune = k === "rune" ? runesFor(it).find((r) => r.id === msg.rune) : undefined;
+    if (k === "rune" && !rune) return "That rune is not on offer for this item";
+    const price = enhancePrice(k, it, this.wave, rune?.id);
+    if (!pay(price)) return "Not enough gold";
+    const before = JSON.stringify(it);
+    const fx = (cid: string) => applyEffect(CURRENCY_BY_ID.get(cid)!.effect, it, CURRENCY_BY_ID.get(cid));
+    let res: { err?: string; msg?: string } = {};
+    switch (k) {
+      case "forge":
+        res = fx(forgeStep(it)!);
+        break;
+      case "quality": {
+        // One purchase = one +5% step (Normal takes it in one use, Magic / Rare in several).
+        const goal = Math.min(MAX_QUALITY, (Math.floor((it.q ?? 0) / 5) + 1) * 5);
+        const cid = qualityCur(it)!;
+        for (let i = 0; i < 6 && (it.q ?? 0) < goal && !res.err; i++) res = fx(cid);
+        if (!res.err) res = { msg: `Quality raised to ${it.q}%` };
+        break;
+      }
+      case "socket":
+        res = fx("cur_boring");
+        break;
+      case "rune":
+        res = applyRune(rune!.id, it);
+        break;
+      case "chaos":
+        res = fx("cur_shifting");
+        break;
+      case "divine":
+        res = fx("cur_tempering");
+        break;
+      case "reforge": {
+        // A fresh Rare of the same base: strip it to Normal, then reforge with four modifiers.
+        it.r = 0;
+        it.m = [];
+        res = fx("cur_forgeheart");
+        break;
+      }
+      case "gemsocket":
+        res = fx("cur_awl");
+        break;
+      case "corrupt":
+        res = fx("cur_blighted");
+        break;
+      case "unique": {
+        const pool = uniquesFor(it);
+        const u = makeUnique(pool[Math.floor(Math.random() * pool.length)].id, it.l, it.id);
+        if (!u) res = { err: "No unique exists on this base" };
+        else {
+          if (it.q) u.q = it.q;
+          if (it.s) u.s = it.s;
+          for (const key of Object.keys(it)) delete (it as unknown as Record<string, unknown>)[key];
+          Object.assign(it, u);
+          res = { msg: `Transformed into ${u.n}` };
+        }
+        break;
+      }
+    }
+    if (res.err) {
+      for (const key of Object.keys(it)) delete (it as unknown as Record<string, unknown>)[key];
+      Object.assign(it, JSON.parse(before));
+      this.addGold(p, price); // refund
+      return res.err;
+    }
+    if (own.where.k === "equip") refreshStats(p, (d, x, y) => this.g.dropItem(d, x, y));
+    p.invDirty = true;
+    this.g.toast(p, `${res.msg ?? "Done"} (${price} gold)`);
+    return null;
+  }
+
+  // ---- Reinforcements: crowdfunded units for your team's next wave ------------------------------------
+
+  private fund(p: ServerPlayer, kind: string, n: number): string | null {
+    if (p.team === undefined) return "No team";
+    const k = kind as ReinfKind;
+    if (!REINF_KINDS.includes(k)) return "No such unit";
+    const team = p.team as Team;
+    if (this.queued[team].length >= REINF_CAP) return `The next wave is full (${REINF_CAP} bought units)`;
+    const price = reinfPrice(k, this.wave);
+    const pot = this.pots[team].get(k) ?? { have: 0, who: new Map<string, number>() };
+    const gold = this.gold.get(p.id) ?? 0;
+    const amt = Math.floor(Math.min(gold, Math.max(1, Number.isFinite(n) ? n : 0), price - pot.have));
+    if (amt <= 0) return "Not enough gold";
+    this.gold.set(p.id, gold - amt);
+    pot.have += amt;
+    pot.who.set(p.name, (pot.who.get(p.name) ?? 0) + amt);
+    this.pots[team].set(k, pot);
+    if (pot.have >= price) {
+      this.queued[team].push(k);
+      const names = [...pot.who.keys()].join(", ");
+      this.pots[team].delete(k);
+      for (const q of this.g.joined) if (q.team === team) this.g.toast(q, `Reinforcement funded: ${REINF_NAME[k]} joins the next wave (${names})`);
+    } else this.g.toast(p, `+${amt} gold to the ${REINF_NAME[k]} (${Math.floor(pot.have)}/${price})`);
+    return null;
   }
 
   sellValue(it: Item): number {

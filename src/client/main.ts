@@ -39,6 +39,7 @@ import { hudClick, hudFrame, hudHint, hudOnMessage, hudOnSnap, hudReset, initHud
 import { REPLAYING, startReplay } from "./devreplay"; // dev-only match replay viewer
 import { setWorldCursor } from "./gfx/worldui"; // worldui: context cursors
 import { CINE, cineApply } from "./devcam"; // dev-only cinematic camera (?dev=1&cine=1)
+import { playSfx } from "./invsfx";
 import { initLaneHud, laneOnMessage } from "./lanehud"; // Breachway lane mode HUD + Quartermaster
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
@@ -52,7 +53,8 @@ const interp = new Interpolator();
 const ui = new UI((m) => net.send(m));
 initSkills((m) => net.send(m)); // skill bar + Skills panel (skillbar.ts)
 initHud({ send: (m) => net.send(m), ui: { isOpen: () => ui.open, toggle: (f) => ui.toggle(f) } }); // canvas HUD + panel docking (client/hud)
-initLaneHud((m) => net.send(m), () => ui.inv);
+initLaneHud((m) => net.send(m), () => ui.inv, { show: (it, x, y, hint) => ui.showTip(it, x, y, true, hint), hide: () => ui.hideTip() }, () => ui.equip);
+renderer.onLaneLock = () => playSfx("spire.lock"); // Breachway: a turret locked onto you
 
 let selfId = -1;
 let joined = false;
@@ -512,7 +514,19 @@ function simStep(now: number): number {
   return dt;
 }
 
+// A throw anywhere in a frame (render, gore, HUD, audio) used to skip the next requestAnimationFrame,
+// freezing the picture for good while the match carried on. The wrapper always keeps the loop alive.
+let frameErrors = 0;
 function frame() {
+  try {
+    frameBody();
+  } catch (err) {
+    if (frameErrors++ < 5) console.error("frame error (loop kept running):", err);
+    requestAnimationFrame(frame);
+  }
+}
+
+function frameBody() {
   lastRafMs = performance.now();
   if (!frameAllowed(performance.now())) {
     requestAnimationFrame(frame); // FPS cap (Graphics option)
@@ -628,7 +642,11 @@ const BG_TICK_MS = 33;
 function bgTick() {
   const nowMs = performance.now();
   if (!document.hidden && nowMs - lastRafMs < 250) return; // rAF is running: it owns the loop
-  simStep(nowMs / 1000);
+  try {
+    simStep(nowMs / 1000);
+  } catch (err) {
+    if (frameErrors++ < 5) console.error("background tick error:", err);
+  }
 }
 (function startBgTicker() {
   try {

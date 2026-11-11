@@ -8,6 +8,7 @@ import {
   BASE_SOCKETS,
   CUTTABLE_SKILLS,
   CUTTABLE_SPIRIT,
+  displayTags,
   GEM_MAX_LEVEL,
   innateFor,
   isSpiritDef,
@@ -28,7 +29,9 @@ import {
   type SkillKind,
   type SkillTag,
   type SupportGemDef,
+  weaponReqText,
 } from "./content/gems";
+import { REC_SCORE, SKILL_SUPPORT_RECS, SUPPORT_TAG_WEIGHT } from "./content/supportrecs";
 import type { WeaponProps } from "./content/types";
 import { registerItemKind } from "./grid";
 import type { Item } from "./items";
@@ -79,7 +82,24 @@ export const supportDefOf = (it: Item | null | undefined): SupportGemDef | undef
 registerItemKind({ category: "gem", matches: (it) => isGem(it), footprint: { w: 1, h: 1 } });
 
 export function gemLevel(it: Item): number {
-  return Math.max(1, Math.min(GEM_MAX_LEVEL, Math.round(it.l || 1)));
+  // A corrupted gem can sit one level above the normal maximum (Blighted Ember, PoE2 corruption).
+  return Math.max(1, Math.min(GEM_MAX_LEVEL + (it.x ? 1 : 0), Math.round(it.l || 1)));
+}
+
+/** PoE2 gem quality: every 2% quality is 1% more damage (Lapidary's Polish; corruption may push it to 23%). */
+export function gemQualityMore(it: Item | null | undefined): number {
+  return 1 + Math.max(0, it?.q ?? 0) / 200;
+}
+
+/** "Tags: Attack, Melee, Strike, Physical, Mace" (PoE2 order; weapon class last). */
+export function tagLine(d: SkillGemDef, tags?: readonly SkillTag[]): string {
+  return `Tags: ${displayTags(d, tags).join(", ")}`;
+}
+
+/** Why the active weapon set can't use this skill (null = it can). PoE2: attacks are bound to weapon classes. */
+export function weaponRefusal(d: SkillGemDef, wk: string | null | undefined): string | null {
+  if (!d.weapons?.length || (wk && d.weapons.includes(wk))) return null;
+  return `Requires: ${weaponReqText(d)}`;
 }
 export function supportTier(it: Item): number {
   return Math.max(1, Math.min(SUPPORT_MAX_TIER, Math.round(it.l || 1)));
@@ -119,6 +139,7 @@ export function cutOptions(rough: Item): { id: string; name: string; ok: boolean
 export function upgradeRefusal(rough: Item, gem: Item): string | null {
   const d = skillDefOf(gem);
   if (!d || d.innate) return "Only skill and spirit gems can be raised";
+  if (gem.x) return "Corrupted gems can't be raised";
   if (rough.b !== (isSpiritDef(d) ? ROUGH_SPIRIT : ROUGH_SKILL)) return `Needs a ${isSpiritDef(d) ? "spirit" : "skill"} crystal`;
   if (rough.l <= gemLevel(gem)) return `The crystal must be above level ${gemLevel(gem)}`;
   return null;
@@ -128,11 +149,15 @@ export function upgradeRefusal(rough: Item, gem: Item): string | null {
 export function gemLines(it: Item, attrs?: Attrs): string[] {
   const sk = skillDefOf(it);
   if (sk) {
-    const out = [`${isSpiritDef(sk) ? "Spirit gem" : sk.innate ? "Weapon skill" : "Skill gem"} · Level ${gemLevel(it)} · ${ATTR_NAME[sk.attr]}`, sk.tags.join(", "), sk.desc];
+    const out = [`${isSpiritDef(sk) ? "Spirit gem" : sk.innate ? "Weapon skill" : "Skill gem"} · Level ${gemLevel(it)} · ${ATTR_NAME[sk.attr]}`, tagLine(sk)];
+    const req = weaponReqText(sk);
+    if (req) out.push(`Requires: ${req}`);
+    out.push(sk.desc);
     if (sk.spirit) out.push(`Reserves ${sk.spirit} Spirit while on`);
     else out.push(`Mana cost ${Math.round(levelCost(sk, gemLevel(it)))}${sk.cd ? ` · Cooldown ${sk.cd}s` : ""}`);
-    if (sk.weapons) out.push(`Requires: ${sk.weapons.join(" / ")}`);
+    if (it.q) out.push(`Quality: +${it.q}% (${Math.round((gemQualityMore(it) - 1) * 100)}% more damage)`);
     out.push(`Support sockets: ${socketCount(it)} / ${MAX_SOCKETS}`);
+    if (it.x) out.push("Corrupted");
     return out;
   }
   const sp = supportDefOf(it);
@@ -245,6 +270,32 @@ export function supportRefusal(sup: SupportGemDef, skill: SkillGemDef, others: (
   if (sup.needs.length && !sup.needs.some((t) => skill.tags.includes(t))) return `${sup.name} only fits ${sup.needs.join(" / ")} skills (${skill.name} is ${skill.tags.join(", ")})`;
   if (others.some((o) => o?.id === sup.id)) return `${skill.name} already has ${sup.name}`;
   return null;
+}
+
+/** One support's place in a skill's recommended list. */
+export interface SupportRec {
+  def: SupportGemDef;
+  score: number;
+  /** In the skill's curated list (content/supportrecs.ts). */
+  curated: boolean;
+}
+
+/**
+ * PoE2 "recommended supports" for a skill: every support that can link to it (supportRefusal ok,
+ * ignoring duplicates), best first. Score = curated rank + tag fit (data in content/supportrecs.ts).
+ */
+export function rankSupports(skill: SkillGemDef): SupportRec[] {
+  const cur = SKILL_SUPPORT_RECS[skill.id] ?? [];
+  const out: SupportRec[] = [];
+  for (const s of SUPPORT_GEMS) {
+    if (supportRefusal(s, skill)) continue;
+    const r = cur.indexOf(s.id);
+    let score = r >= 0 ? REC_SCORE.CURATED_TOP - r * REC_SCORE.CURATED_STEP : 0;
+    const w = SUPPORT_TAG_WEIGHT[s.id] ?? {};
+    for (const t of skill.tags) score += w[t] ?? 0;
+    out.push({ def: s, score, curated: r >= 0 });
+  }
+  return out.sort((a, b) => b.score - a.score || a.def.name.localeCompare(b.def.name));
 }
 
 /**
@@ -377,6 +428,7 @@ export function computeSkill(slot: BarSlot | null | undefined, st: Readonly<Stat
     };
   }
   const level = gemLevel(slot.gem!) + gearLevelBonus(def.tags, st); // + gear "+N to Level of all X Skills"
+  const quality = gemQualityMore(slot.gem); // Lapidary's Polish: 1% more damage per 2% quality
   const sdefs = slot.sups.map((s) => supportDefOf(s));
   const supports: SkillAction["supports"] = [];
   const tags = [...def.tags];
@@ -406,12 +458,9 @@ export function computeSkill(slot: BarSlot | null | undefined, st: Readonly<Stat
 
   const attack = def.tags.includes("attack");
   const wk: string | null = armed ? w.kind : null;
-  let ok = true;
-  let why: string | undefined;
-  if (def.weapons && (!wk || !def.weapons.includes(wk))) {
-    ok = false;
-    why = `Requires: ${def.weapons.join(" / ")}`;
-  }
+  // PoE2: weapon-bound skills need that weapon class in the ACTIVE weapon set (equip.mainhand after a swap).
+  const why = weaponRefusal(def, wk) ?? undefined;
+  const ok = !why;
   const lv = level - 1;
   const base = attack ? st.attackDamage * (def.dmg + 0.04 * lv) : def.dmg * Math.pow(1.13, lv) * st.spellMult;
   const time = (attack ? st.swingTime * def.time : def.time / (st.castSpeed || 1)) / speed;
@@ -439,7 +488,7 @@ export function computeSkill(slot: BarSlot | null | undefined, st: Readonly<Stat
     commit: def.commit,
     cd: def.cd / cdr,
     move: def.move,
-    dmg: r1(base * more),
+    dmg: r1(base * more * quality),
     reach,
     arc,
     radius,
@@ -477,7 +526,13 @@ export function actionLines(a: SkillAction): string[] {
     return out;
   }
   if (a.innate) out.push("Weapon skill (from your equipped weapon)");
-  out.push(`Level ${a.level} · ${a.tags.join(", ")}`);
+  out.push(`Level ${a.level}`);
+  const def = SKILL_GEM_BY_ID.get(a.id);
+  if (def) {
+    out.push(tagLine(def, a.tags));
+    const req = weaponReqText(def);
+    if (req && a.ok) out.push(`Requires: ${req}`);
+  }
   if (a.kind === "aura" || a.kind === "meta") {
     out.push(`Reserves ${a.spirit} Spirit while switched on (press to toggle)`);
     if (a.aura) {

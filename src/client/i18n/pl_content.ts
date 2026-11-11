@@ -6,7 +6,14 @@ import type { Dict } from "./index";
 const TAGS: Record<string, string> = {
   area: "obszar", attack: "atak", buff: "wzmocnienie", chain: "łańcuch", cold: "zimno", duration: "czas trwania", fire: "ogień", lightning: "błyskawice",
   melee: "walka wręcz", meta: "meta", movement: "ruch", persistent: "trwała", physical: "fizyczne", projectile: "pocisk", slam: "uderzenie w ziemię",
-  spell: "zaklęcie", totem: "totem",
+  spell: "zaklęcie", totem: "totem", strike: "cios", trap: "pułapka",
+};
+/** Capitalised PoE2-style tag names on gem tooltips ("Tags: Attack, Melee, Mace"). */
+const TAG_CAPS: Record<string, string> = {
+  Attack: "Atak", Spell: "Zaklęcie", Melee: "Walka wręcz", Projectile: "Pocisk", Area: "Obszar", Slam: "Uderzenie w ziemię", Strike: "Cios", Trap: "Pułapka",
+  Chaining: "Łańcuch", Movement: "Ruch", Buff: "Wzmocnienie", Totem: "Totem", Duration: "Czas trwania", Persistent: "Trwała", Meta: "Meta",
+  Physical: "Fizyczne", Fire: "Ogień", Cold: "Zimno", Lightning: "Błyskawice", Sword: "Miecz", Axe: "Topór", Mace: "Buława", Dagger: "Sztylet",
+  Claw: "Pazur", Spear: "Włócznia", Quarterstaff: "Kij bojowy", Bow: "Łuk", Crossbow: "Kusza", Wand: "Różdżka", Staff: "Kostur", Sceptre: "Berło",
 };
 const tags = (s: string, sep: string, join: string) => s.split(sep).map((x) => TAGS[x.trim()] ?? x.trim()).join(join);
 
@@ -144,7 +151,7 @@ export const PL_CONTENT: Dict = {
   "{x} (Level {n})": "{x} (poziom {n})",
   "A slow, two-handed overhead blow that cleaves a narrow line and hurls the target back.": "Powolny, oburęczny cios znad głowy, który rozcina wąski pas i odrzuca cel.",
   "Raise your weapon and split the ground ahead. The impact zone is marked while you wind up.": "Unieś broń i rozłup ziemię przed sobą. Strefa uderzenia jest oznaczona, gdy bierzesz zamach.",
-  "Loose a tight fan of barbed shafts (with a bow) or hurled shards of your blade.": "Wypuść ciasny wachlarz zadziornych strzał (z łuku) albo ciśnij odłamkami swojego ostrza.",
+  "Loose a tight fan of barbed shafts from your bow.": "Wypuść z łuku ciasny wachlarz zadziornych strzał.",
   "Fling a spitting knot of embers that bursts on the first thing it touches.": "Ciśnij plującym kłębem żaru, który wybucha na pierwszej rzeczy, której dotknie.",
   "Exhale a gale of rime in a cone. Everything caught is chilled.": "Wydmuchnij stożek szronowej wichury. Wszystko w jej zasięgu zostaje wychłodzone.",
   "A crackling thread leaps to the nearest foe you aim at, then jumps between nearby enemies.": "Trzaskająca nić skacze do najbliższego wroga, w którego celujesz, a potem przeskakuje między pobliskimi.",
@@ -163,7 +170,7 @@ export const PL_CONTENT: Dict = {
   "Hold to loose arrow after arrow, each one quicker than the last, until you stop or run dry.": "Przytrzymaj, by wypuszczać strzałę za strzałą, każdą szybciej od poprzedniej, dopóki nie przestaniesz albo nie zabraknie ci many.",
   "Set your feet and brace. For a short while you take far less damage and cannot be knocked back, but you move slowly.": "Stań pewnie i zaprzyj się. Przez krótki czas otrzymujesz znacznie mniej obrażeń i nie da się cię odrzucić, ale poruszasz się powoli.",
   "Toss a rime-crusted snare ahead of you. Once set, it bursts under the first enemy to step near and chills everything caught.": "Rzuć przed siebie oszronione sidła. Gdy się uzbroją, wybuchają pod pierwszym wrogiem, który podejdzie, i wychładzają wszystko w zasięgu.",
-  "Throw your weapon in a spinning arc. It cuts through everything on the way out and again on the way back to your hand.": "Ciśnij bronią wirującym łukiem. Przecina wszystko w drodze tam i jeszcze raz, wracając do twojej ręki.",
+  "Hurl your spear in a spinning arc. It cuts through everything on the way out and again on the way back to your hand.": "Ciśnij włócznią wirującym łukiem. Przecina wszystko w drodze tam i jeszcze raz, wracając do twojej ręki.",
   "Brand the ground ahead with a sigil. A moment later the sky answers and lightning strikes the mark.": "Naznacz ziemię przed sobą pieczęcią. Chwilę później niebo odpowiada i piorun uderza w znak.",
   "Vault toward your aim and come down like a thunderclap, shocking the ground where you land.": "Skocz w stronę celu i spadnij jak grom, rażąc ziemię w miejscu lądowania.",
   "+2 projectiles in a wider fan, but less damage.": "+2 pociski w szerszym wachlarzu, ale mniej obrażeń.", "More attack and cast speed for this skill.": "Większa szybkość ataku i rzucania tej umiejętności.",
@@ -185,6 +192,11 @@ export const PL_CONTENT: Dict = {
   "or use it to raise an owned spirit gem to level {n}.": "albo podnieś nim posiadany kamień ducha do poziomu {n}.",
   "Damage {n} · {v}s per attack · free": "Obrażenia {n} · {v} s na atak · bez kosztu", "{v}s per attack": "{v} s na atak", free: "bez kosztu", "Damage {n}": "Obrażenia {n}",
   "Weapon skill (from your equipped weapon)": "Umiejętność broni (z założonej broni)",
+  // PoE2 tags and weapon restrictions on gems
+  "Tags: {$x}": (x) => `Tagi: ${x.split(", ").map((t) => TAG_CAPS[t] ?? t).join(", ")}`,
+  "Any melee weapon": "Dowolna broń do walki wręcz", "Bow or Crossbow": "Łuk lub kusza", "Axe or Mace": "Topór lub buława",
+  "Spear or Quarterstaff": "Włócznia lub kij bojowy", "Staff or Wand or Sceptre": "Kostur, różdżka lub berło", Melee: "Wręcz",
+  "Quality: +{n}% ({m}% more damage)": "Jakość: +{n}% ({m}% więcej obrażeń)",
   "{n}% more damage": "{n}% więcej obrażeń", "{n}% more movement speed": "{n}% więcej szybkości ruchu", "{v} life regenerated per second": "{v} pkt. życia regenerowane na sekundę",
   "Rolling builds {v} energy per unit; fires the spell at 100 energy": "Przewrót daje {v} energii na jednostkę drogi; przy 100 energii zaklęcie strzela",
   "Socketed: {x} (level {n}), damage {m}, no mana cost": "Osadzone: {x} (poziom {n}), obrażenia {m}, bez kosztu many",
@@ -301,7 +313,7 @@ export const PL_CONTENT: Dict = {
   "{x} is already socketed in {y} (one of each support)": "{x} jest już osadzone w: {y} (każde wsparcie tylko raz)", "another skill": "inna umiejętność",
   Empty: "Puste", "Empty socket": "Puste gniazdo", "That crystal isn't in your bag": "Tego kryształu nie ma w twoim plecaku", "Gem not found": "Nie znaleziono kamienia",
   "Pick a gem": "Wybierz kamień", "That crystal can't become that gem": "Ten kryształ nie może stać się tym kamieniem",
-  "{x} is on your skill bar ({$k})": "{x} jest na pasku umiejętności ({k})", "{x} is on your skill bar ({$k}), but it needs {$w}": "{x} jest na pasku umiejętności ({k}), ale wymaga: {w}",
+  "{x} is on your skill bar ({$k})": "{x} jest na pasku umiejętności ({k})", "{x} is on your skill bar ({$k}), but it needs {w}": "{x} jest na pasku umiejętności ({k}), ale wymaga: {w}",
   "{x}: right-click it in your bag to equip it": "{x}: kliknij prawym w plecaku, aby założyć", "{x}: right-click it in your bag to cut it": "{x}: kliknij prawym w plecaku, aby oszlifować",
   "{x}: right-click it in your bag to socket it": "{x}: kliknij prawym w plecaku, aby osadzić",
 

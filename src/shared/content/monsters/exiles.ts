@@ -31,7 +31,7 @@ export const EXILES: ExileDef[] = [
   {
     id: "vesk", name: "Vesk Halloran", epithet: "the Oathless", weapon: "sword", color: "#c03030",
     armour: ["helmet", "body", "gloves", "boots", "ring"],
-    gems: { main: ["sundering_blow"], extra: ["shadow_lunge", "faultline_slam", "ember_pact"], supports: ["heavy_hand", "bloodthirst", "quickened_rite", "cindertouch"], spirit: ["ashen_mantle"] },
+    gems: { main: ["sundering_blow"], extra: ["shadow_lunge", "reaping_whirl", "ember_pact"], supports: ["heavy_hand", "bloodthirst", "quickened_rite", "cindertouch"], spirit: ["ashen_mantle"] },
   },
   {
     id: "maren", name: "Maren Ashcaller", epithet: "of the Cinder Choir", weapon: "staff", color: "#e07a20", kite: 250,
@@ -39,7 +39,7 @@ export const EXILES: ExileDef[] = [
     gems: { main: ["cinderbolt"], extra: ["frostgale", "pyre_effigy", "stormthread"], supports: ["cindertouch", "scattershot", "heavy_hand", "quickened_rite"], spirit: ["ashen_mantle"] },
   },
   {
-    id: "tobb", name: "Tobb Grimlatch", epithet: "the Gravedigger", weapon: "axe", color: "#808060",
+    id: "tobb", name: "Tobb Grimlatch", epithet: "the Gravedigger", weapon: "mace", color: "#808060",
     armour: ["helmet", "body", "gloves", "boots", "belt"],
     gems: { main: ["faultline_slam"], extra: ["sundering_blow", "ember_pact"], supports: ["heavy_hand", "broadened_ruin", "bloodthirst"], spirit: ["ashen_mantle"] },
   },

@@ -34,7 +34,13 @@ export function generateLaneMap(params: MapParams): GameMap {
       };
       const rag = (hashi(i, 0, S) - 0.5) * CELL * 1.2;
       const inBand = x >= LANE.baseW - CELL && x <= w - LANE.baseW + CELL && y > LANE.bandTop + rag && y < LANE.bandBot - rag;
-      if (inBase(CELL * 2, LANE.baseW) || inBase(w - LANE.baseW, w - CELL * 2) || inBand) {
+      // Trial alcoves: a flattened clearing off the band's top edge (ascendancy trial, shared/lanes.ts LANE.trial).
+      const inAlcove = LANE.trial.some((a) => ((x - a.x) / LANE.trialR) ** 2 + ((y - a.y) / 140) ** 2 < 1 + rag / 400);
+      // Jungle glades (neutral camps) and the corridor joining each to the band.
+      const rag2 = (hashi(i, j, S + 3) - 0.5) * 0.18;
+      const inGlade = LANE.glades.some((a) => ((x - a.x) / a.rx) ** 2 + ((y - a.y) / a.ry) ** 2 < 1 + rag2);
+      const inPath = LANE.glades.some((a) => Math.abs(x - a.x) < 150 + rag * 0.5 && (a.y < LANE.y ? y > a.y && y < LANE.bandTop + 40 : y < a.y && y > LANE.bandBot - 40));
+      if (inBase(CELL * 2, LANE.baseW) || inBase(w - LANE.baseW, w - CELL * 2) || inBand || inAlcove || inGlade || inPath) {
         solid[k] = OPEN;
         zone[k] = Math.abs(y - LANE.y) < 160 ? ZONE.road : inBand ? ZONE.glade : ZONE.heart;
       }
@@ -119,11 +125,13 @@ export function generateLaneMap(params: MapParams): GameMap {
   for (const p of LANE.pillars) obstacles.push({ x: p.x, y: p.y, r: 48, k: "ruin", v: 0, tag: "pillar" });
   // Side cover: rocks along the band edges between the spires (never on the lane line or near structures).
   const structXs = Object.values(STRUCT_X).flat();
-  for (let n = 0; n < 14; n++) {
-    const x = 1500 + hashi(n, 1, S + 20) * (w - 3000);
+  for (let n = 0; n < 26; n++) {
+    const x = 2600 + hashi(n, 1, S + 20) * (w - 5200);
     const top = hashi(n, 2, S + 21) < 0.5;
     const y = top ? LANE.bandTop + 110 + hashi(n, 3, S + 22) * 90 : LANE.bandBot - 110 - hashi(n, 3, S + 22) * 90;
     if (structXs.some((sx) => Math.abs(sx - x) < 260) || LANE.pillars.some((p) => Math.hypot(p.x - x, p.y - y) < 300)) continue;
+    if (top && LANE.trial.some((a) => Math.abs(a.x - x) < LANE.trialR + 80)) continue; // keep the trial alcove mouths open
+    if (LANE.glades.some((a) => Math.abs(a.x - x) < 260)) continue; // and the jungle corridors
     obstacles.push({ x, y, r: 30 + hashi(n, 4, S + 23) * 16, k: "rocks", v: Math.floor(hashi(n, 5, S + 24) * 8) });
   }
 
@@ -146,8 +154,10 @@ export function generateLaneMap(params: MapParams): GameMap {
     nearestOpen,
     obstacles,
     grid: new StaticCircleGrid(obstacles, w, h, 128),
-    pois: [],
-    camps: [],
+    // One trial shrine per team in its alcove (server/progression.ts reads the "trial" points).
+    pois: LANE.trial.map((a, i) => ({ id: i, kind: "trial" as const, x: a.x, y: a.y, r: 90, danger: 0.3 })),
+    // Jungle camps (spawned and refilled by server/modes/lanes.ts, not by the royale camp populate).
+    camps: LANE.glades.map((a, i) => ({ id: i, x: a.x, y: a.y, tier: a.tier, danger: a.tier ? 0.6 : 0.35 })),
     spawns,
     center: { x: w / 2, y: LANE.y },
     openArea: openCells * CELL * CELL,

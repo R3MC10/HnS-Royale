@@ -10,28 +10,65 @@ export type GameMode = "royale" | "lanes";
 export type Team = 0 | 1;
 
 export const LANE = {
-  w: 7168,
-  h: 1536,
+  // Enlarged (was 7168 x 1536): 1.71x longer, 1.83x taller, with jungle glades above and below the band.
+  w: 12288,
+  h: 2816,
   /** Lane centre line (mobs march on it). */
-  y: 768,
+  y: 1408,
   /** Lane band (walkable) between the bases. */
-  bandTop: 320,
-  bandBot: 1216,
-  /** Base rectangles: x 0-1152 (Dawn) and 6016-7168 (Dusk), y 128-1408. */
-  baseW: 1152,
-  baseTop: 128,
-  baseBot: 1408,
+  bandTop: 960,
+  bandBot: 1856,
+  /** Base rectangles: x 0-1792 (Dawn) and 10496-12288 (Dusk), y 448-2368. */
+  baseW: 1792,
+  baseTop: 448,
+  baseBot: 2368,
   /** Shop platform centre x per team (y = lane line), radius. */
-  shopX: [448, 6720] as const,
+  shopX: [704, 11584] as const,
   shopR: 420,
   /** Quartermaster NPC and respawn point. */
-  npc: [{ x: 320, y: 700 }, { x: 6848, y: 700 }] as const,
-  respawn: [{ x: 360, y: 840 }, { x: 6808, y: 840 }] as const,
+  npc: [{ x: 576, y: 1340 }, { x: 11712, y: 1340 }] as const,
+  respawn: [{ x: 616, y: 1480 }, { x: 11672, y: 1480 }] as const,
   /** Mob spawn x per team. */
-  mobX: [824, 6344] as const,
+  mobX: [1500, 10788] as const,
   /** Mid-lane pillars (cover). */
-  pillars: [{ x: 3300, y: 640 }, { x: 3868, y: 896 }] as const,
+  pillars: [{ x: 5700, y: 1280 }, { x: 6588, y: 1536 }, { x: 4150, y: 1690 }, { x: 8138, y: 1126 }] as const,
+  /**
+   * Trial alcoves (ascendancy trial, server/progression.ts): one per team, a side clearing carved off the
+   * top edge of the band between that team's Ward and Inner Spire. The enemy has to pass two spires to
+   * reach it, and the waves (marching on the centre line, aggro 380) never wander in.
+   */
+  trial: [{ x: 2875, y: 850 }, { x: 9413, y: 850 }] as const,
+  /** Alcove half-width (half-height 140). */
+  trialR: 250,
+  /**
+   * Jungle glades: side clearings joined to the band by a corridor at x (half-width 150), each holding a
+   * neutral camp (server/modes/lanes.ts). Own-side glades between the Inner and Outer Spires, two contested
+   * glades at mid (elite camps). rx / ry: ellipse half-axes.
+   */
+  glades: [
+    { x: 4200, y: 520, rx: 520, ry: 260, tier: 0 },
+    { x: 3600, y: 2300, rx: 600, ry: 280, tier: 0 },
+    { x: 8088, y: 520, rx: 520, ry: 260, tier: 0 },
+    { x: 8688, y: 2300, rx: 600, ry: 280, tier: 0 },
+    { x: 6144, y: 470, rx: 560, ry: 250, tier: 1 },
+    { x: 6144, y: 2346, rx: 560, ry: 250, tier: 1 },
+  ] as const,
 };
+
+
+/**
+ * Spire / Core shooting range. Was 520 / 650: 520 reached past the band edge (the band runs 448 px either
+ * side of the lane line), so there was no flank at all, and it out-ranged every hero skill but the two
+ * longest (520-600). 420 sits just over a wave's aggro (380): ranged heroes (520-600 reach) can trade with
+ * a wave at the ring's edge without being shot, melee must commit, and hugging the band edge is a real,
+ * risky flank. The Core keeps a little more (480) as the last line.
+ */
+export const SPIRE_RANGE = 420;
+export const CORE_RANGE = 480;
+/** Breachway ascendancy trial: seconds to finish (the royale's is 120; the walk from the lane is longer). */
+export const LANE_TRIAL_TIME = 150;
+/** Gold for helping kill an enemy hero (damaged them in the last ASSIST_WINDOW seconds). */
+export const ASSIST_WINDOW = 10;
 
 /** Structure kinds, in the order they must fall (outer first). */
 export const STRUCT_KINDS = ["lane_outer", "lane_inner", "lane_ward", "lane_core"] as const;
@@ -39,11 +76,26 @@ export type StructKind = (typeof STRUCT_KINDS)[number];
 
 /** Structure x positions per team (Dawn, Dusk); y is the lane line. */
 export const STRUCT_X: Record<StructKind, [number, number]> = {
-  lane_outer: [2688, 4480],
-  lane_inner: [1920, 5248],
-  lane_ward: [1280, 5888],
-  lane_core: [704, 6464],
+  lane_outer: [4850, 7438],
+  lane_inner: [3500, 8788],
+  lane_ward: [2250, 10038],
+  lane_core: [1200, 11088],
 };
+
+// ---- waypoints ------------------------------------------------------------------------------------
+
+/** Waypoint kinds: one beside each structure, plus the base one (always up). */
+export type WaypointKind = "base" | StructKind;
+export const WAYPOINT_KINDS: WaypointKind[] = ["base", "lane_core", "lane_ward", "lane_inner", "lane_outer"];
+/** Channel time to travel (cancelled by taking damage). */
+export const WAYPOINT_CHANNEL = 2;
+/** You must stand this close to one of your team's standing waypoints to travel. */
+export const WAYPOINT_USE_R = 220;
+/** A waypoint's spot: 300 px below its structure on the band; the base one on the platform. */
+export function waypointAt(team: Team, k: WaypointKind): { x: number; y: number } {
+  if (k === "base") return { x: LANE.shopX[team] + (team === 0 ? 110 : -110), y: LANE.y - 290 };
+  return { x: STRUCT_X[k][team] + (team === 0 ? -60 : 60), y: LANE.y + 300 };
+}
 
 export const TEAM_NAMES = ["Dawn", "Dusk"] as const;
 export const TEAM_COLORS = ["#4f8fe8", "#e0503c"] as const;

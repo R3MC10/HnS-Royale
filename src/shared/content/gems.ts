@@ -18,6 +18,8 @@ export type SkillTag =
   | "projectile"
   | "area"
   | "slam"
+  | "strike"
+  | "trap"
   | "chain"
   | "movement"
   | "buff"
@@ -94,11 +96,62 @@ export interface SkillGemDef {
   color: string; // effect / UI tint
 }
 
-const MELEE_ALL = ["sword", "spear", "axe", "dagger", "claw", "staff", "quarterstaff", "mace", "sceptre"];
+/**
+ * PoE2 weapon restrictions. Attack skills are bound to a weapon class: bow skills need a bow,
+ * crossbow skills a crossbow, mace skills a mace (one- or two-handed), and so on. Generic melee
+ * attacks (strikes, spins) take any martial melee weapon; caster weapons (wand, staff, sceptre)
+ * and bare hands can't use them. Spells work with anything. Only the ACTIVE weapon set counts.
+ */
+export const MELEE_ALL = ["sword", "axe", "mace", "dagger", "claw", "spear", "quarterstaff"];
+
+/** Display names of weapon classes (requirement lines, tags). */
+export const WEAPON_CLASS_NAME: Record<string, string> = {
+  sword: "Sword", axe: "Axe", mace: "Mace", dagger: "Dagger", claw: "Claw", spear: "Spear", quarterstaff: "Quarterstaff",
+  bow: "Bow", crossbow: "Crossbow", wand: "Wand", staff: "Staff", sceptre: "Sceptre",
+};
+
+/** True when the skill takes any melee weapon (no single weapon class). */
+export const isGenericMelee = (d: Pick<SkillGemDef, "weapons">) => !!d.weapons && d.weapons.length === MELEE_ALL.length && MELEE_ALL.every((w) => d.weapons!.includes(w));
+
+/** "Mace", "Bow or Crossbow", "Any melee weapon" (null = usable with anything). */
+export function weaponReqText(d: Pick<SkillGemDef, "weapons">): string | null {
+  if (!d.weapons?.length) return null;
+  if (isGenericMelee(d)) return "Any melee weapon";
+  return d.weapons.map((w) => WEAPON_CLASS_NAME[w] ?? w).join(" or ");
+}
+
+/** PoE2-style tag list for display: Attack / Spell first, then delivery, element, weapon class. */
+const TAG_ORDER: SkillTag[] = ["attack", "spell", "persistent", "meta", "melee", "projectile", "strike", "slam", "area", "chain", "trap", "totem", "movement", "buff", "duration", "physical", "fire", "cold", "lightning"];
+export const TAG_NAME: Record<SkillTag, string> = {
+  attack: "Attack", spell: "Spell", melee: "Melee", projectile: "Projectile", area: "Area", slam: "Slam", strike: "Strike", trap: "Trap", chain: "Chaining",
+  movement: "Movement", buff: "Buff", totem: "Totem", duration: "Duration", persistent: "Persistent", meta: "Meta", physical: "Physical", fire: "Fire",
+  cold: "Cold", lightning: "Lightning",
+};
+export function displayTags(d: Pick<SkillGemDef, "tags" | "weapons">, tags: readonly SkillTag[] = d.tags): string[] {
+  const out = [...tags].sort((a, b) => TAG_ORDER.indexOf(a) - TAG_ORDER.indexOf(b)).map((t) => TAG_NAME[t] ?? t);
+  if (d.weapons?.length && !isGenericMelee(d)) for (const w of d.weapons) out.push(WEAPON_CLASS_NAME[w] ?? w);
+  return out;
+}
+
+/** Starting skill gem per weapon kind (socketed on RMB at the start of every match; the hall's class showcase lists it). */
+export const STARTER_SKILL: Record<string, string> = {
+  sword: "sundering_blow",
+  axe: "sundering_blow",
+  mace: "sundering_blow",
+  spear: "wheeling_glaive",
+  dagger: "sundering_blow",
+  claw: "sundering_blow",
+  bow: "splinter_volley",
+  crossbow: "galeshot_barrage",
+  staff: "cinderbolt",
+  quarterstaff: "sundering_blow",
+  wand: "cinderbolt",
+  sceptre: "cinderbolt",
+};
 
 export const SKILL_GEMS: SkillGemDef[] = [
   {
-    id: "sundering_blow", name: "Sundering Blow", kind: "strike", tags: ["attack", "melee", "physical"], attr: "str", tier: 1,
+    id: "sundering_blow", name: "Sundering Blow", kind: "strike", tags: ["attack", "melee", "strike", "physical"], attr: "str", tier: 1,
     desc: "A slow, two-handed overhead blow that cleaves a narrow line and hurls the target back.",
     cost: 6, time: 1.25, commit: 0.58, cd: 0, move: 0.15, dmg: 2.3, arcDeg: 60, reach: 18, kbMult: 1.8,
     weapons: MELEE_ALL, color: "#e8c890",
@@ -107,13 +160,13 @@ export const SKILL_GEMS: SkillGemDef[] = [
     id: "faultline_slam", name: "Faultline Slam", kind: "slam", tags: ["attack", "melee", "area", "slam", "physical"], attr: "str", tier: 2,
     desc: "Raise your weapon and split the ground ahead. The impact zone is marked while you wind up.",
     cost: 9, time: 1.5, commit: 0.62, cd: 0, move: 0.05, dmg: 2.8, reach: 78, radius: 74, kbMult: 1.3,
-    weapons: ["sword", "axe", "spear", "staff", "quarterstaff", "mace"], color: "#d29a5a",
+    weapons: ["mace"], color: "#d29a5a", // PoE2: slams are mace skills
   },
   {
     id: "splinter_volley", name: "Splinter Volley", kind: "volley", tags: ["attack", "projectile", "physical"], attr: "dex", tier: 1,
-    desc: "Loose a tight fan of barbed shafts (with a bow) or hurled shards of your blade.",
+    desc: "Loose a tight fan of barbed shafts from your bow.",
     cost: 7, time: 1.1, commit: 0.5, cd: 0, move: 0.4, dmg: 0.85, speed: 720, range: 560, count: 3, spread: 9, kbMult: 0.5,
-    weapons: ["bow", "crossbow", "dagger", "spear"], color: "#d8d0a0",
+    weapons: ["bow"], color: "#d8d0a0",
   },
   {
     id: "cinderbolt", name: "Cinderbolt", kind: "bolt", tags: ["spell", "projectile", "fire"], attr: "int", tier: 1,
@@ -149,7 +202,7 @@ export const SKILL_GEMS: SkillGemDef[] = [
 
   // ---- second set: play patterns the first nine lack ----
   {
-    id: "reaping_whirl", name: "Reaping Whirl", kind: "spin", tags: ["attack", "melee", "area", "physical"], attr: "str", tier: 2,
+    id: "reaping_whirl", name: "Reaping Whirl", kind: "spin", tags: ["attack", "melee", "strike", "area", "physical"], attr: "str", tier: 2,
     desc: "Spin with your weapon out, cutting everything around you three times. You can walk while you turn.",
     cost: 9, time: 1.6, commit: 0.25, cd: 0, move: 0.6, dmg: 0.7, count: 3, reach: 14, kbMult: 0.4,
     weapons: MELEE_ALL, color: "#e8d0a0",
@@ -163,7 +216,7 @@ export const SKILL_GEMS: SkillGemDef[] = [
     id: "galeshot_barrage", name: "Galeshot Barrage", kind: "volley", tags: ["attack", "projectile", "physical"], attr: "dex", tier: 2,
     desc: "Hold to loose arrow after arrow, each one quicker than the last, until you stop or run dry.",
     cost: 2, time: 0.62, commit: 0.55, cd: 0, move: 0.25, dmg: 0.7, speed: 800, range: 540, count: 1, spread: 4, kbMult: 0.3, ramp: { step: 0.14, min: 0.48 },
-    weapons: ["bow", "crossbow"], color: "#d8e8b0",
+    weapons: ["crossbow"], color: "#d8e8b0", // PoE2: the ramping volley is a crossbow skill
   },
   {
     id: "bulwark_stance", name: "Bulwark Stance", kind: "guard", tags: ["buff", "duration"], attr: "str", tier: 2,
@@ -171,15 +224,15 @@ export const SKILL_GEMS: SkillGemDef[] = [
     cost: 8, time: 0.3, commit: 0.4, cd: 9, move: 0.5, dmg: 0, guard: { dur: 2.2, less: 0.5 }, color: "#c8d0e0",
   },
   {
-    id: "hoarfrost_snare", name: "Hoarfrost Snare", kind: "trap", tags: ["spell", "area", "duration", "cold"], attr: "dex", tier: 2,
+    id: "hoarfrost_snare", name: "Hoarfrost Snare", kind: "trap", tags: ["spell", "trap", "area", "duration", "cold"], attr: "dex", tier: 2,
     desc: "Toss a rime-crusted snare ahead of you. Once set, it bursts under the first enemy to step near and chills everything caught.",
     cost: 7, time: 0.5, commit: 0.6, cd: 2.5, move: 0.5, dmg: 26, radius: 62, chill: 3, zone: { place: 130, delay: 0.7, dur: 14, trig: 30, max: 3 }, color: "#b0e8f0",
   },
   {
     id: "wheeling_glaive", name: "Wheeling Glaive", kind: "volley", tags: ["attack", "projectile", "physical"], attr: "dex", tier: 3,
-    desc: "Throw your weapon in a spinning arc. It cuts through everything on the way out and again on the way back to your hand.",
+    desc: "Hurl your spear in a spinning arc. It cuts through everything on the way out and again on the way back to your hand.",
     cost: 8, time: 1.15, commit: 0.5, cd: 0, move: 0.4, dmg: 0.8, speed: 520, range: 330, count: 1, spread: 16, kbMult: 0.4, pierce: true, returns: true,
-    weapons: ["axe", "sword", "dagger", "spear", "claw"], color: "#e0d8c0",
+    weapons: ["spear"], color: "#e0d8c0", // PoE2: thrown weapon skills are spear skills
   },
   {
     id: "stormcall_sigil", name: "Stormcall Sigil", kind: "blast", tags: ["spell", "area", "lightning"], attr: "int", tier: 3,
@@ -190,7 +243,7 @@ export const SKILL_GEMS: SkillGemDef[] = [
     id: "stormvault", name: "Stormvault", kind: "leap", tags: ["attack", "melee", "area", "slam", "lightning"], attr: "str", tier: 4,
     desc: "Vault toward your aim and come down like a thunderclap, shocking the ground where you land.",
     cost: 10, time: 1.2, commit: 0.4, cd: 6, move: 0.1, dmg: 2.2, speed: 230, radius: 70, kbMult: 1.2,
-    weapons: MELEE_ALL, color: "#b8b0ff",
+    weapons: ["quarterstaff"], color: "#b8b0ff", // PoE2: the vaulting lightning slam is a quarterstaff skill
   },
 
   // ---- spirit gems (cut from rough spirit crystals) ----
@@ -212,7 +265,7 @@ export const SKILL_GEMS: SkillGemDef[] = [
 
   // ---- weapon skills (granted by the equipped weapon; not droppable) ----
   {
-    id: "riposte_arc", name: "Riposte Arc", kind: "strike", tags: ["attack", "melee", "physical"], attr: "str", tier: 0, innate: ["sword"],
+    id: "riposte_arc", name: "Riposte Arc", kind: "strike", tags: ["attack", "melee", "strike", "physical"], attr: "str", tier: 0, innate: ["sword"],
     desc: "A fast, wide backhand sweep that shoves everything around you away.",
     cost: 4, time: 0.85, commit: 0.5, cd: 4, move: 0.5, dmg: 1.1, arcDeg: 160, reach: 4, kbMult: 2.2, weapons: ["sword"], color: "#f0e0b0",
   },
@@ -222,7 +275,7 @@ export const SKILL_GEMS: SkillGemDef[] = [
     cost: 5, time: 1.2, commit: 0.55, cd: 5, move: 0.2, dmg: 1.6, reach: 34, radius: 52, kbMult: 1.4, weapons: ["axe", "mace"], color: "#c88a5a",
   },
   {
-    id: "longreach_thrust", name: "Longreach Thrust", kind: "strike", tags: ["attack", "melee", "physical"], attr: "dex", tier: 0, innate: ["spear", "quarterstaff"],
+    id: "longreach_thrust", name: "Longreach Thrust", kind: "strike", tags: ["attack", "melee", "strike", "physical"], attr: "dex", tier: 0, innate: ["spear", "quarterstaff"],
     desc: "Step into a long, narrow thrust that outranges most blades.",
     cost: 4, time: 1, commit: 0.55, cd: 3, move: 0.35, dmg: 1.5, arcDeg: 22, reach: 62, kbMult: 1, weapons: ["spear", "quarterstaff"], color: "#e0d8a8",
   },

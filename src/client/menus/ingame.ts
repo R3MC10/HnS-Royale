@@ -20,6 +20,8 @@ import type { Net } from "../net";
 import { t, tr } from "../i18n";
 import { actionLabel, onBindsChange } from "../keybinds";
 import { registerPanel, setAliveHook } from "../options";
+import { attachSkinBackdrop } from "../inventory";
+import { panelHead } from "../progstyle";
 import { getSettings, subscribe } from "../settings";
 import { getHudLayout, onHudLayoutChange, rectToCss } from "../hud/layout";
 import type { HudLayout } from "../hud/types";
@@ -63,13 +65,11 @@ const CSS = `
 #hns-chat input:focus { box-shadow: 0 0 0 1px #8c7448, inset 0 2px 4px rgba(0,0,0,0.8), 0 0 10px rgba(200,140,60,0.18); }
 #hns-chat.ghost input { color: #b8b8c4; }
 #hns-chat.open input { display: block; }
-#hns-social { position: fixed; left: 16px; top: 6vh; z-index: 12; display: none; width: 300px; max-height: 70vh; overflow-y: auto; box-sizing: border-box;
-  padding: 14px 16px; color: #e4d6b8; font-family: var(--font-body, "Palatino Linotype", Georgia, serif); -webkit-font-smoothing: antialiased;
-  background: radial-gradient(ellipse at 50% 0%, rgba(120,70,40,0.10), transparent 60%), linear-gradient(180deg, #1b1719 0%, #121012 55%, #0d0b0d 100%);
-  border: 1px solid #050405; border-radius: 6px;
-  box-shadow: 0 0 0 1px #3a3136, 0 0 0 3px #0d0b0d, 0 0 0 4px #5a4a3a, 0 0 0 5px #0a0809, 0 16px 50px rgba(0,0,0,0.8), inset 0 0 30px rgba(0,0,0,0.5);
-  zoom: var(--hns-ui, 1); scrollbar-width: thin; scrollbar-color: #5a4a3c #0c0b0d; }
-#hns-social h3 { margin: 0 0 8px; font-family: var(--font-title, "Cinzel", Georgia, serif); color: #d9b26a; letter-spacing: 0.14em; font-size: 13px;
+#hns-social { position: fixed; left: 16px; top: 6vh; z-index: 12; display: none; width: 300px; max-height: 70vh; box-sizing: border-box;
+  flex-direction: column; overflow: hidden; color: #e4d6b8; font-family: var(--font-body, "Palatino Linotype", Georgia, serif); -webkit-font-smoothing: antialiased;
+  background: #100e0d; box-shadow: 0 18px 60px rgba(0,0,0,0.85), 0 0 0 1px #050405; }
+#hns-social .sc { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 4px 16px 14px; zoom: var(--hns-ui, 1); scrollbar-width: thin; scrollbar-color: #5a4a3c #0c0b0d; }
+#hns-social h3 { margin: 6px 0 8px; font-family: var(--font-title, "Cinzel", Georgia, serif); color: #c8a060; letter-spacing: 0.16em; font-size: 12px;
   text-transform: uppercase; border-bottom: 1px solid rgba(140,116,72,0.28); padding-bottom: 5px; }
 #hns-social .r { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 14px; border-bottom: 1px solid rgba(140,116,72,0.1); }
 #hns-social .r .pip { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; background: #5e5444; box-shadow: 0 0 0 1px #050405; }
@@ -231,11 +231,11 @@ export function initInGameSocial(opts: { canChat: () => boolean; send: (text: st
     if (on) mutes.add(k);
     else mutes.delete(k);
     saveMutes();
-    if (social.style.display === "block") renderSocial();
+    if (social.style.display === "flex") renderSocial();
   };
   // Key hints follow the current bindings (bar package: keybinds).
   onBindsChange(() => {
-    if (social.style.display === "block") renderSocial();
+    if (social.style.display === "flex") renderSocial();
   });
 
   let lastWhisper = ""; // who to /r
@@ -272,7 +272,7 @@ export function initInGameSocial(opts: { canChat: () => boolean; send: (text: st
         }
         if (msg.board) {
           board = msg.board;
-          if (social.style.display === "block") renderSocialSoon();
+          if (social.style.display === "flex") renderSocialSoon();
         }
         break;
       }
@@ -286,7 +286,7 @@ export function initInGameSocial(opts: { canChat: () => boolean; send: (text: st
     if (socialTimer) return;
     socialTimer = setTimeout(() => {
       socialTimer = null;
-      if (social.style.display === "block") renderSocial();
+      if (social.style.display === "flex") renderSocial();
     }, 250);
   };
 
@@ -369,7 +369,7 @@ export function initInGameSocial(opts: { canChat: () => boolean; send: (text: st
   input.addEventListener("keyup", (e) => e.stopPropagation());
   // Esc layers (options.ts): chat input is its own layer above full-screen and docked panels.
   registerPanel({ isOpen: () => box.classList.contains("open"), close: closeChat, layer: "chat" });
-  registerPanel({ isOpen: () => social.style.display === "block", close: () => setSocial(false), layer: "docked" });
+  registerPanel({ isOpen: () => social.style.display === "flex", close: () => setSocial(false), layer: "docked" });
 
   // ---- log lines ----
   const addLine = (l: { from: string; text: string; cls: string; item?: Item; to?: string }) => {
@@ -433,11 +433,14 @@ export function initInGameSocial(opts: { canChat: () => boolean; send: (text: st
 
   // ---- social panel (left dock) ----
   const setSocial = (on: boolean) => {
-    social.style.display = on ? "block" : "none";
+    social.style.display = on ? "flex" : "none";
     if (on) renderSocial();
   };
   const renderSocial = () => {
-    social.replaceChildren();
+    const list = document.createElement("div");
+    list.className = "sc";
+    social.replaceChildren(panelHead("Social", "social", () => setSocial(false)), list);
+    attachSkinBackdrop(social, "panel");
     const muteBtn = (name: string) => {
       const b = document.createElement("button");
       b.type = "button";
@@ -451,7 +454,7 @@ export function initInGameSocial(opts: { canChat: () => boolean; send: (text: st
     const inMatch = board.length > 0;
     const h = document.createElement("h3");
     h.textContent = inMatch ? `In this match (${board.filter((b) => b.alive).length} of ${board.length} standing)` : `In this hall (${members.length})`;
-    social.append(h);
+    list.append(h);
     if (inMatch) {
       const rows = [...board].sort((a, b) => Number(b.alive) - Number(a.alive) || b.kills - a.kills || a.name.localeCompare(b.name));
       for (const e of rows) {
@@ -473,23 +476,23 @@ export function initInGameSocial(opts: { canChat: () => boolean; send: (text: st
         k.title = `${e.kills} kill${e.kills === 1 ? "" : "s"}`;
         r.append(pip, n, c, k);
         if (e.id !== selfId) r.append(muteBtn(e.name));
-        social.append(r);
+        list.append(r);
       }
       const waiting = members.filter((m) => !m.inMatch);
       if (waiting.length) {
         const s = document.createElement("div");
         s.className = "sub";
         s.textContent = "Waiting in the hall";
-        social.append(s);
-        for (const m of waiting) social.append(memberRow(m, muteBtn));
+        list.append(s);
+        for (const m of waiting) list.append(memberRow(m, muteBtn));
       }
     } else {
-      for (const m of members) social.append(memberRow(m, muteBtn));
+      for (const m of members) list.append(memberRow(m, muteBtn));
       if (!members.length) {
         const d = document.createElement("div");
         d.className = "hint";
         d.textContent = "The match roster appears once the fight is on.";
-        social.append(d);
+        list.append(d);
       }
     }
     const hint = document.createElement("div");
@@ -498,7 +501,7 @@ export function initInGameSocial(opts: { canChat: () => boolean; send: (text: st
     const chatK = lbl("chat") || "unbound";
     const socK = lbl("social") || "Esc";
     hint.textContent = `${chatK} to chat · @name to whisper · ${socK} to close`;
-    social.append(hint);
+    list.append(hint);
   };
   const memberRow = (m: RoomMember, muteBtn: (n: string) => HTMLElement) => {
     const r = document.createElement("div");
@@ -526,8 +529,8 @@ export function initInGameSocial(opts: { canChat: () => boolean; send: (text: st
       input.focus();
       input.setSelectionRange(input.value.length, input.value.length);
     },
-    socialOpen: () => social.style.display === "block",
-    socialToggle: (on) => setSocial(on ?? social.style.display !== "block"),
+    socialOpen: () => social.style.display === "flex",
+    socialToggle: (on) => setSocial(on ?? social.style.display !== "flex"),
   };
 
   return {
@@ -545,7 +548,7 @@ export function initInGameSocial(opts: { canChat: () => boolean; send: (text: st
         return true;
       }
       if (a === "social") {
-        setSocial(social.style.display !== "block");
+        setSocial(social.style.display !== "flex");
         return true;
       }
       return false;
@@ -558,7 +561,7 @@ export function initInGameSocial(opts: { canChat: () => boolean; send: (text: st
     },
     setMembers(m) {
       members = m;
-      if (social.style.display === "block") renderSocial();
+      if (social.style.display === "flex") renderSocial();
     },
     reset() {
       closeChat();

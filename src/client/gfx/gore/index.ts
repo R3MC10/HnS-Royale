@@ -9,6 +9,7 @@ import { MONSTER_BY_ID } from "../../../shared/content/monsters";
 import { LEGACY_FAMILY, ROSTER } from "../../../shared/content/monsters/roster";
 import { decodeLook } from "../../../shared/look";
 import { onMapChange } from "../../../shared/map";
+import { isStructKind } from "../../../shared/lanes";
 import type { GameEvent, GoreFx, MonsterSnap, PlayerSnap } from "../../../shared/protocol";
 import { sfx } from "../../audio/sfx";
 import type { BodyRegion } from "../hero";
@@ -700,6 +701,7 @@ export function goreEvents(events: GameEvent[], self: number) {
           onBoom(e.x, e.y, e.r);
           break;
         case "mdie": {
+          if (isStructKind(e.mk)) break; // Breachway: structures collapse (render.ts), they do not bleed
           const m = monsters.get(e.id);
           onDeath("m", e.id, e.x, e.y, e.r, monMat(e.mk), monsterLook(e.mk), e, false, { mk: e.mk, ang: m?.a ?? e.a });
           break;

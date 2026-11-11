@@ -66,7 +66,7 @@ function css(L: HudLayout): string {
   return `
 body:not(.pg-with-inv) #inv-panel { left: auto !important; bottom: auto !important; transform: none !important;
   max-height: none !important; max-width: none !important; overflow: visible !important; box-sizing: border-box !important; z-index: 20 !important; }
-#pg-char, #sk-panel { left: ${DOCK_EDGE}px !important; right: auto !important; top: ${DOCK_TOP_VH}vh !important; bottom: auto !important;
+#pg-char, #sk-panel, #hns-social { left: ${DOCK_EDGE}px !important; right: auto !important; top: ${DOCK_TOP_VH}vh !important; bottom: auto !important;
   transform: none !important; max-height: ${maxH} !important; height: ${maxH} !important; width: ${dockW} !important; box-sizing: border-box !important;
   border-radius: 0 !important; z-index: 20 !important; }
 /* more rows below the fold: the last visible rows fade out (the panel scrolls with the wheel) */

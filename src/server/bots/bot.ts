@@ -21,6 +21,7 @@ import type { MonsterSnap, PlayerSnap, HazardSnap, CampSnap, InvMsg, ProjSnap } 
 import { SKILL_GEM_BY_ID, SUPPORT_GEMS, ROUGH_SPIRIT, ROUGH_SUPPORT, innateFor, isSpiritDef } from "../../shared/content/gems";
 import { cutOptions, supportRefusal, skillDefOf, supportDefOf, isRough, isSkillGem, isSupportGem, isGem, upgradeRefusal, levelCost, gemLevel, socketCount, supportAt, supportTier, type BarSlot } from "../../shared/skills";
 import { findPath, steer, takePathSlot } from "./path";
+import { waypointAt } from "../../shared/lanes";
 import { GAMBLE_SLOTS, LANE, STRUCT_KINDS, STRUCT_X, gamblePrice, isStructKind, maxCrystalLevel, skillCrystalPrice, SUPPORT_TIERS } from "../../shared/lanes";
 import type { LaneMsg } from "../../shared/protocol";
 
@@ -200,6 +201,7 @@ class Brain {
   allMonsters: MonsterSnap[] = [];
   recall = false;
   shopAt = 0;
+  wpAt = 0;
   crystalsBought = 0;
 
   constructor(readonly idx: number, readonly send: (m: unknown) => void) {
@@ -661,6 +663,20 @@ class Brain {
         this.target = null;
         if (hyp(me.x - hx, me.y - LANE.y) < 200) return this.input(0, 0, me.angle, false, false);
         return this.travel(me, hx, LANE.y, angTo(me.x, me.y, hx, LANE.y), false, false, "home");
+      }
+      // Waypoints: from the platform, travel to the frontmost standing one (hold still while it channels).
+      const l = this.lane;
+      if (l.ch !== undefined) return this.input(0, 0, me.angle, false, false);
+      if (l.wa && l.wp && now > this.wpAt) {
+        const front = (["lane_outer", "lane_inner", "lane_ward", "lane_core"] as const).find((k) => l.wp!.includes(k));
+        if (front) {
+          const q = waypointAt(tm, front);
+          this.wpAt = now + 6000;
+          if (hyp(me.x - q.x, me.y - q.y) > 1200 && Math.random() < 0.8) {
+            this.send({ t: "wp", to: front });
+            return this.input(0, 0, me.angle, false, false);
+          }
+        }
       }
     }
 
@@ -1184,6 +1200,11 @@ class Brain {
       const tier = [...SUPPORT_TIERS].reverse().find((t) => lv >= t.level);
       if (tier && this.crystalsBought % 2 === 0 && l.g >= tier.price) return this.send({ t: "shop", a: "support", lv: tier.tier });
       return this.send({ t: "shop", a: "skill", lv: kMax });
+    }
+    // Now and then chip into a team reinforcement pot (most of all one that is nearly funded).
+    if (l.rf && (l.rq ?? 0) < 3 && l.g > 260 && Math.random() < 0.1) {
+      const pot = [...l.rf].sort((a, b) => b[1] / b[2] - a[1] / a[2])[Math.random() < 0.7 ? 0 : Math.floor(Math.random() * l.rf.length)];
+      if (pot) return this.send({ t: "shop", a: "fund", k: pot[0], n: Math.min(pot[2] - pot[1], Math.max(25, Math.floor((l.g - 180) / 2))) });
     }
     const eq = this.inv.equip as Record<string, Item | undefined>;
     const empty = GAMBLE_SLOTS.filter((q) => q !== "flask" && q !== "offhand" && !eq[q === "weapon" ? "mainhand" : q === "ring" ? "ring1" : q]);

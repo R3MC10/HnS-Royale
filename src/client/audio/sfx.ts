@@ -557,6 +557,46 @@ def("ui.error", U, (v) => {
   tone(v, { type: "square", f: 110, dur: 0.09, vol: 0.12, filter: { type: "lowpass", f: 700 } });
   return tone(v, { at: 0.11, type: "square", f: 98, dur: 0.12, vol: 0.12, filter: { type: "lowpass", f: 700 } });
 });
+// ---- Breachway (lane mode) -----------------------------------------------------------
+def("struct.collapse", { ...K, cat: "lanes", prio: 9, vol: 1, max: 2, verb: 0.35 }, (v) => {
+  // stone cracking, a long grinding rumble as it sinks, then the slabs landing
+  crackle(v, 0.5, 0.7, 0, 1800);
+  noise(v, { dur: 0.05, vol: 0.5, filter: { type: "highpass", f: 2500 } });
+  rumble(v, 2.0, 0.9, 380, 0.15);
+  noise(v, { at: 0.3, color: "pink", dur: 1.4, a: 0.2, vol: 0.35, filter: { type: "bandpass", f: 260, f2: 120, q: 1.4 } });
+  thud(sub(v, shaper(v)), 70, 28, 0.9, 0.9, 0.85);
+  for (let i = 0; i < 5; i++) thud(v, 180 + v.r() * 120, 70, 0.12, 0.35, 0.95 + i * 0.09 + v.r() * 0.05);
+  return crackle(v, 0.9, 0.35, 1.0, 1200);
+});
+def("lane.gold", { ...L, cat: "lanes", bus: "ui", prio: 6, vol: 0.5, max: 2, verb: 0.1 }, (v) => {
+  let e = 0;
+  for (let i = 0; i < 2; i++) e = metal(v, { at: i * 0.07, f: 2300 + i * 700 + v.r() * 200, ratios: [1, 1.43, 2.6], dur: 0.22, vol: 0.12 });
+  return e;
+});
+def("shop.buy", { ...U, cat: "lanes", vol: 0.55 }, (v) => {
+  noise(v, { color: "pink", dur: 0.12, a: 0.01, vol: 0.3, filter: { type: "bandpass", f: 1200, q: 2 } });
+  let e = 0;
+  for (let i = 0; i < 4; i++) e = metal(v, { at: 0.04 + i * 0.04, f: 2600 + v.r() * 900, ratios: [1, 1.43], dur: 0.15, vol: 0.09 });
+  return Math.max(e, thud(v, 160, 90, 0.1, 0.3, 0.02));
+});
+def("shop.sell", { ...U, cat: "lanes", vol: 0.5 }, (v) => {
+  thud(v, 140, 80, 0.1, 0.3);
+  let e = 0;
+  for (let i = 0; i < 3; i++) e = metal(v, { at: 0.08 + i * 0.05, f: 3200 - i * 300 + v.r() * 300, ratios: [1, 1.5], dur: 0.14, vol: 0.08 });
+  return e;
+});
+def("spire.lock", { ...U, cat: "lanes", prio: 7, vol: 0.5, max: 1 }, (v) => {
+  tone(v, { type: "square", f: 880, dur: 0.06, vol: 0.12, filter: { type: "lowpass", f: 2400 } });
+  return tone(v, { at: 0.09, type: "square", f: 1175, dur: 0.09, vol: 0.12, filter: { type: "lowpass", f: 2400 } });
+});
+
+def("lane.waypoint", { ...L, cat: "lanes", prio: 6, vol: 0.55, max: 2, verb: 0.3 }, (v) => {
+  noise(v, { color: "pink", dur: 0.55, a: 0.2, vol: 0.22, filter: { type: "bandpass", f: 900, q: 1.2 } });
+  let e = 0;
+  for (let i = 0; i < 3; i++) e = metal(v, { at: 0.08 + i * 0.09, f: midi(72 + i * 4), ratios: [1, 2.01], dur: 0.5, vol: 0.08 });
+  return e;
+});
+
 def("ui.confirm", U, (v) => {
   metal(v, { f: midi(69), ratios: [1, 2.01], dur: 0.35, vol: 0.12 });
   return metal(v, { at: 0.08, f: midi(76), ratios: [1, 2.01], dur: 0.45, vol: 0.12 });

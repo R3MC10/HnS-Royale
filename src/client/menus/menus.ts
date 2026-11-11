@@ -17,6 +17,8 @@ import type { Net } from "../net";
 import type { ClientConn } from "../../net/transport";
 import { MENU_CSS } from "./style";
 import { initInGameSocial } from "./ingame";
+import { CLASS_SELECT_CSS, renderClassSelect } from "./classshow";
+import { drawClassEmblem } from "../classpick";
 
 /** Build version, injected by esbuild (scripts/build.mjs, dev.mjs); shown bottom-right on every menu screen. */
 declare const __APP_VERSION__: string;
@@ -138,7 +140,7 @@ const className = (id: string) => CLASS_BY_ID.get(id)?.name ?? id;
 export function initMenus(h: MenuHooks): Menus {
   const { net, overlay } = h;
   const style = el("style");
-  style.textContent = MENU_CSS;
+  style.textContent = MENU_CSS + CLASS_SELECT_CSS;
   document.head.appendChild(style);
 
   let root = document.getElementById("menu-root");
@@ -501,14 +503,62 @@ export function initMenus(h: MenuHooks): Menus {
     const prevDraft = (R.querySelector("#m-chat-in") as HTMLInputElement | null)?.value ?? "";
     const hadFocus = document.activeElement?.id === "m-chat-in";
     setScreen("room");
-    const grid = el("div", "m-room");
-
-    // Left: members.
-    const left = el("div", "m-panel m-col");
+    const grid = el("div", "m-hall");
     const isHost = !!room?.members.find((m) => m.id === room!.you)?.host;
     const settings = room?.settings;
+    const me = room?.members.find((m) => m.id === room!.you);
+
+    // ---- top bar: hall name + mode, room code, options / leave ----
+    const top = el("div", "m-panel m-hall-top");
+    const tl = el("div", "m-hall-name");
+    tl.append(el("h2", "m-title mid", settings?.name ?? "The Hall"));
+    if (settings) tl.append(el("span", "m-hall-mode", modeName(settings.mode)));
+    const tc = el("div", "m-row m-coderow");
+    if (roomCode) {
+      const cv = el("b", "m-code", roomCode);
+      cv.dataset.noi18n = "";
+      tc.append(el("span", "m-label", "Room code"), cv);
+      if (isHost) tc.append(btn("Copy", "small", () => void navigator.clipboard?.writeText(roomCode).catch(() => {})));
+    }
+    const tr_ = el("div", "m-row m-hall-topbtns");
+    tr_.append(btn("Options", "small", () => openOptions()), btn(isHost ? "Close hall" : "Leave", "small", leaveRoom));
+    top.append(tl, tc, tr_);
+
+    // ---- left: gathered players (+ bots for the host) ----
+    const left = el("div", "m-panel m-col m-hall-side");
     left.append(el("div", "m-h", `Gathered ${room ? `${room.members.length}/${settings!.max}` : ""}`));
     if (!room) left.append(Object.assign(el("div", "m-note"), { innerHTML: '<span class="m-spin"></span>Entering the hall…' }));
+    const list = el("div", "m-col m-members");
+    for (const m of room?.members ?? []) {
+      const row = el("div", "m-member" + (m.id === room!.you ? " me" : "") + (m.ready ? " rdy" : ""));
+      const em = el("canvas");
+      drawClassEmblem(em, m.cls, 30);
+      const who = el("div", "who");
+      const nm = el("span", "nm");
+      if (m.host) nm.append(el("span", "m-crown", "♛ "));
+      nm.append(m.name);
+      const cl = el("span", "cl", className(m.cls) + (m.inMatch ? " · in match" : ""));
+      who.append(nm, cl);
+      const dot = el("span", "m-dot" + (m.ready ? " ready" : ""));
+      dot.title = m.ready ? "Ready" : "Not ready";
+      row.append(em, who);
+      if (m.bot) {
+        row.title = `Bot · ${className(m.cls)}`;
+        row.append(el("span", "m-bot", "BOT"));
+      }
+      row.append(dot);
+      if (isHost && !m.host) {
+        const x = el("button", "m-x", "✕");
+        x.title = m.bot ? `Remove bot ${m.name}` : `Kick ${m.name}`;
+        x.addEventListener("click", () => {
+          uiSound("ui.click");
+          net.sendRaw({ t: "r-kick", id: m.id });
+        });
+        row.append(x);
+      }
+      list.append(row);
+    }
+    left.append(list);
     if (isHost && room) {
       // Bots (host only): they sit in the hall like players, always ready, and play the match.
       const nBots = room.members.filter((m) => m.bot).length;
@@ -537,98 +587,27 @@ export function initMenus(h: MenuHooks): Menus {
         clear.id = "m-bot-clear";
         bots.append(clear);
       }
-      left.append(bots);
+      left.append(el("div", "m-h", "Bots"), bots);
       if (room.state === "match") left.append(el("div", "m-note", "Bots added now play in the next match."));
     }
-    for (const m of room?.members ?? []) {
-      const row = el("div", "m-member" + (m.id === room!.you ? " me" : ""));
-      const dot = el("span", "m-dot" + (m.ready ? " ready" : ""));
-      dot.title = m.ready ? "Ready" : "Not ready";
-      const nm = el("span", "nm");
-      if (m.host) nm.append(el("span", "m-crown", "♛ "));
-      nm.append(m.name);
-      const cl = el("span", "cl", className(m.cls) + (m.inMatch ? " · in match" : ""));
-      row.append(dot, nm, cl);
-      if (m.bot) {
-        // Narrow column: a bot shows its BOT tag where the class would be (class on hover).
-        row.title = `Bot · ${className(m.cls)}`;
-        cl.textContent = m.inMatch ? "in match" : "";
-        cl.after(el("span", "m-bot", "BOT"));
-      }
-      if (isHost && !m.host) {
-        const x = el("button", "m-x", "✕");
-        x.title = m.bot ? `Remove bot ${m.name}` : `Kick ${m.name}`;
-        x.addEventListener("click", () => {
-          uiSound("ui.click");
-          net.sendRaw({ t: "r-kick", id: m.id });
-        });
-        row.append(x);
-      }
-      left.append(row);
-    }
-    left.append(btn(isHost ? "Close hall" : "Leave", "small", leaveRoom), btn("Options", "small", () => openOptions()));
 
-    // Middle: class pick, ready / start, settings.
-    const mid = el("div", "m-panel m-col");
-    const title = el("h2", "m-title mid", settings?.name ?? "The Hall");
-    mid.append(title);
-    if (roomCode) {
-      const cr = el("div", "m-row m-coderow");
-      const cv = el("b", "m-code", roomCode);
-      cv.dataset.noi18n = "";
-      cr.append(el("span", "m-label", "Room code"), cv);
-      if (isHost) cr.append(btn("Copy", "small", () => void navigator.clipboard?.writeText(roomCode).catch(() => {})));
-      mid.append(cr);
-    }
+    // ---- middle: character selection ----
+    const mid = el("div", "m-col m-hall-mid");
     if (room?.hostHidden && !isHost) mid.append(el("div", "m-warn", "The host's tab is in the background: the game may stutter until they come back."));
-    if (room?.state === "match" && !room.members.find((m) => m.id === room!.you)?.inMatch) mid.append(el("div", "m-warn", "A match is in progress. You'll join the next one."));
-    mid.append(el("div", "m-h", "Choose your calling"));
-    const me = room?.members.find((m) => m.id === room!.you);
-    const classes = el("div", "m-classes");
-    for (const c of CLASSES) {
-      const card = el("div", "m-class" + (c.id === profileCls ? " sel" : ""));
-      card.append(el("b", "", c.name), el("i", "", c.attrs), el("span", "", c.blurb));
-      card.style.borderLeft = `3px solid ${c.tint}`;
-      card.addEventListener("click", () => {
-        if (me?.inMatch) return;
-        uiSound("ui.click");
-        profileCls = c.id;
-        store.set("hns-class", c.id);
-        net.sendRaw({ t: "r-cls", cls: c.id });
-        for (const n of Array.from(classes.children)) n.classList.remove("sel");
-        card.classList.add("sel");
-      });
-      classes.append(card);
-    }
-    mid.append(classes);
+    if (room?.state === "match" && !me?.inMatch) mid.append(el("div", "m-warn", "A match is in progress. You'll join the next one."));
+    const pick = renderClassSelect(profileCls, (id) => {
+      uiSound("ui.click");
+      profileCls = id as typeof profileCls;
+      store.set("hns-class", id);
+      net.sendRaw({ t: "r-cls", cls: id });
+    }, !!me?.inMatch);
+    const ph = el("div", "m-h m-hall-pickh", "Choose your calling");
+    pick.root.insertBefore(ph, pick.root.lastElementChild);
+    mid.append(pick.root);
 
-    const act = el("div", "m-row");
-    if (isHost) {
-      const ready = room!.members.filter((m) => m.ready).length;
-      const start = btn(`Begin the match (${ready} ready)`, "primary wide", () => net.sendRaw({ t: "r-start" }), "ui.confirm");
-      start.disabled = ready < (DEV_SOLO ? 1 : 2) || room!.state !== "room";
-      act.append(start);
-      if (room!.state === "match") act.append(btn("Call off match", "small", () => net.sendRaw({ t: "r-abort" })));
-    } else if (me) {
-      const rb = btn(me.ready ? "Ready ✓" : "Ready up", "wide" + (me.ready ? " on" : " primary"), () => net.sendRaw({ t: "r-ready", v: !me.ready }), "ui.confirm");
-      rb.disabled = room!.state !== "room";
-      act.append(rb);
-    }
-    mid.append(act);
-    if (!isHost && me && room?.state === "room") mid.append(el("div", "m-note", "Waiting for the host to start…"));
-    if (isHost && room!.state === "room") {
-      // Only ready players enter the match: say who would be left in the hall before the host starts.
-      const waiting = room!.members.filter((m) => !m.ready && !m.bot).map((m) => m.name);
-      if (waiting.length) mid.append(el("div", "m-warn", `Not ready yet: ${waiting.join(", ")}. If you begin now, they sit this match out.`));
-    }
-    if (me && room?.state === "room") {
-      // Practice while the hall fills: the arena's open (monsters, quick respawns); Esc > Leave returns here.
-      const pb = btn("Practice in the arena", "small", () => net.sendRaw({ t: "r-practice", v: true }));
-      pb.title = "Fight monsters while you wait. Your class is fixed while practising. The match start pulls you out.";
-      mid.append(pb);
-    }
-
-    mid.append(el("div", "m-h", "Rules"));
+    // ---- right: rules + hall talk ----
+    const right = el("div", "m-panel m-col m-hall-side");
+    right.append(el("div", "m-h", "Rules"));
     const sg = el("div", "m-settings");
     if (settings) {
       const lab = (t: string) => el("span", "m-label", t);
@@ -665,14 +644,8 @@ export function initMenus(h: MenuHooks): Menus {
         sg.append(lab("Mode"), el("span", "", modeName(settings.mode)), ...(SHOW_BIOME ? [lab("Biome"), el("span", "", biomeName(settings.biome))] : []), lab("Map size"), el("span", "", sizeName(settings.size)), lab("Max players"), el("span", "", String(settings.max)));
       }
     }
-    mid.append(sg);
-    if (settings?.mode === "lanes") mid.append(el("div", "m-note", "Breachway: two teams, one lane. Waves march, spires shoot, you respawn. Destroy the enemy Core to win. No full loot; buy gear from the Quartermaster on your platform (H)."));
-    if (isHost) mid.append(el("div", "m-note", "You are the host: the match runs in this tab. Keep it in the foreground. Start needs 2 ready players (you count as ready; bots count too)."));
-    statusEl = el("div", "m-status");
-    mid.append(statusEl);
-
-    // Right: chat.
-    const right = el("div", "m-panel m-col");
+    right.append(sg);
+    if (settings?.mode === "lanes") right.append(el("div", "m-note", "Breachway: two teams, one lane. Waves march, spires shoot, you respawn. Destroy the enemy Core to win. No full loot; buy gear from the Quartermaster on your platform (H)."));
     right.append(el("div", "m-h", "Hall talk"));
     chatLog = el("div", "m-chat");
     const input = el("input", "m-input");
@@ -690,7 +663,39 @@ export function initMenus(h: MenuHooks): Menus {
     right.append(chatLog, input);
     if (lastResult) right.append(btn("Last match results", "small", () => renderPost(lastResult!)));
 
-    grid.append(left, mid, right);
+    // ---- bottom bar: notes and warnings left, practice + begin / ready right ----
+    const bar = el("div", "m-panel m-hall-bar");
+    const notes = el("div", "m-col m-hall-notes");
+    if (!isHost && me && room?.state === "room") notes.append(el("div", "m-note", "Waiting for the host to start…"));
+    if (isHost && room!.state === "room") {
+      // Only ready players enter the match: say who would be left in the hall before the host starts.
+      const waiting = room!.members.filter((m) => !m.ready && !m.bot).map((m) => m.name);
+      if (waiting.length) notes.append(el("div", "m-warn", `Not ready yet: ${waiting.join(", ")}. If you begin now, they sit this match out.`));
+    }
+    if (isHost) notes.append(el("div", "m-note", "You are the host: the match runs in this tab. Keep it in the foreground. Start needs 2 ready players (you count as ready; bots count too)."));
+    statusEl = el("div", "m-status");
+    notes.append(statusEl);
+    const act = el("div", "m-row m-hall-act");
+    if (me && room?.state === "room") {
+      // Practice while the hall fills: the arena's open (monsters, quick respawns); Esc > Leave returns here.
+      const pb = btn("Practice in the arena", "", () => net.sendRaw({ t: "r-practice", v: true }));
+      pb.title = "Fight monsters while you wait. Your class is fixed while practising. The match start pulls you out.";
+      act.append(pb);
+    }
+    if (isHost) {
+      const ready = room!.members.filter((m) => m.ready).length;
+      if (room!.state === "match") act.append(btn("Call off match", "small", () => net.sendRaw({ t: "r-abort" })));
+      const start = btn(`Begin the match (${ready} ready)`, "primary m-hall-go", () => net.sendRaw({ t: "r-start" }), "ui.confirm");
+      start.disabled = ready < (DEV_SOLO ? 1 : 2) || room!.state !== "room";
+      act.append(start);
+    } else if (me) {
+      const rb = btn(me.ready ? "Ready ✓" : "Ready up", "m-hall-go" + (me.ready ? " on" : " primary"), () => net.sendRaw({ t: "r-ready", v: !me.ready }), "ui.confirm");
+      rb.disabled = room!.state !== "room";
+      act.append(rb);
+    }
+    bar.append(notes, act);
+
+    grid.append(top, left, mid, right, bar);
     R.append(grid);
     renderChatLog();
     if (hadFocus) input.focus();

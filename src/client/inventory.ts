@@ -18,6 +18,7 @@ import { craftTargetOk } from "../shared/crafttarget";
 import { itemArtCanvas } from "./gfx/itemart";
 import { drawSkinPanel, drawSkinTooltip, hudArtVersion, hudIcon } from "./hud/skin";
 import { progState } from "./prog";
+import { panelHead } from "./progstyle";
 import { playSfx } from "./invsfx";
 import { isGem } from "../shared/skills";
 import { openSkillsWith } from "./skillbar";
@@ -60,6 +61,8 @@ export interface InvHooks {
   showTip: (item: Item, x: number, y: number, compare: boolean, hint: string, anchor?: TipAnchor) => void;
   hideTip: () => void;
   toast: (text: string) => void;
+  /** Close the panel (header close button). */
+  close?: () => void;
 }
 
 // ---- requirements -------------------------------------------------------------------------------
@@ -113,7 +116,7 @@ const PAD_X = 16;
 const PAD_TOP = 12;
 const PAD_BOT = 14;
 const GAP = 8;
-const HEAD_H = 24;
+const HEAD_H = 32;
 const FOOT_H = 22;
 
 /**
@@ -134,11 +137,7 @@ const CSS = `
   -webkit-font-smoothing: antialiased; font-smooth: auto; }
 #inv-panel.invp > canvas.skin-bd { position: absolute; }
 canvas.skin-bd { position: absolute; left: 0; top: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
-.invp-head { align-self: stretch; height: ${HEAD_H}px; box-sizing: border-box;
-  font-family: var(--font-title, "Cinzel", "Trajan Pro", "Palatino Linotype", Georgia, serif); display: flex; justify-content: center;
-  align-items: center; color: #d8b860; letter-spacing: 4px; text-transform: uppercase; font-weight: 700; font-size: 14px;
-  text-shadow: 0 1px 0 #000, 0 0 12px rgba(224,138,58,0.25);
-  background: linear-gradient(90deg, transparent, rgba(216,184,96,0.35), transparent) bottom / 100% 1px no-repeat; }
+#inv-panel .invp-head { align-self: stretch; height: ${HEAD_H}px; } /* shared panel header (progstyle .pc-head) */
 .invp-body { display: flex; flex-direction: column; flex-wrap: nowrap; gap: ${GAP}px; align-items: center; }
 .invp-doll { position: relative; flex: none;
   background: radial-gradient(ellipse at 50% 42%, rgba(120,40,20,0.14), transparent 62%); }
@@ -678,10 +677,8 @@ export class InventoryView {
     root.innerHTML = "";
     this.slotEls.clear();
 
-    const head = document.createElement("div");
-    head.className = "invp-head";
-    head.textContent = "Belongings";
-    head.title = "I / Esc to close";
+    const head = panelHead("Belongings", "inventory", () => this.h.close?.());
+    head.classList.add("invp-head");
     root.appendChild(head);
 
     const body = document.createElement("div");

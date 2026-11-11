@@ -242,8 +242,13 @@ export class GameHost {
         case "chat": // in-match chat (menus/ingame.ts)
           if (p.joined) this.chat(conn, p, msg);
           break;
+        case "wp": { // Breachway waypoint travel (server/modes/lanes.ts)
+          const err = game.lanes ? game.lanes.waypoint(p, msg.to) : "No waypoints here";
+          if (err) game.toast(p, err);
+          break;
+        }
         case "shop": { // Breachway Quartermaster (server/modes/lanes.ts)
-          const err = game.lanes?.shop(p, msg) ?? "No shop here";
+          const err = game.lanes ? game.lanes.shop(p, msg) : "No shop here";
           if (err) game.toast(p, err);
           break;
         }

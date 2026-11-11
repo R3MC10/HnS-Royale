@@ -9,14 +9,14 @@ import type { Stats } from "../shared/stats";
 import { drawClassEmblem } from "./classpick";
 import { attachSkinBackdrop } from "./inventory";
 import { onProgChange, progState } from "./prog";
-import { el, ensureProgStyle, esc } from "./progstyle";
+import { el, ensureProgStyle, esc, panelHead } from "./progstyle";
 import { skillDebug } from "./skillbar";
 
 const CSS = `
 #pg-char { position: fixed; top: 8vh; left: 24px; width: auto; max-height: 84vh; z-index: 40; display: none; flex-direction: column; overflow: hidden;
   background: #100e0d; border: none; border-radius: 0; }
 #pg-char .pgz { zoom: var(--hns-ui, 1); width: 340px; position: relative; display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; }
-#pg-char .head { display: flex; gap: 12px; align-items: center; padding: 16px 48px 12px 16px; border-bottom: 1px solid var(--pg-line); }
+#pg-char .head { display: flex; gap: 12px; align-items: center; padding: 12px 16px 10px; border-bottom: 1px solid var(--pg-line); }
 #pg-char .head canvas { flex: none; }
 #pg-char .head .pg-title { font-size: 18px; text-transform: none; letter-spacing: 0.08em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #pg-char .head .sub { font-size: 12px; color: var(--pg-dim); letter-spacing: 0.08em; margin-top: 2px; }
@@ -29,8 +29,9 @@ const CSS = `
 #pg-char .attr b { display: block; font-family: var(--pg-title); font-size: 19px; }
 #pg-char .attr span { font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--pg-dim); }
 #pg-char .sec { margin-top: 14px; }
-#pg-char .sec .pg-h { padding-bottom: 4px; margin-bottom: 4px;
-  background: linear-gradient(90deg, rgba(216,179,106,0.4), transparent) bottom / 100% 1px no-repeat; }
+#pg-char .sec .pg-h { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.2em; color: #c8a060; }
+#pg-char .sec .pg-h::before, #pg-char .sec .pg-h::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, transparent, rgba(216,179,106,0.4)); }
+#pg-char .sec .pg-h::after { background: linear-gradient(90deg, rgba(216,179,106,0.4), transparent); }
 #pg-char .row { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 2px 0; cursor: default; }
 #pg-char .row:hover { background: linear-gradient(90deg, transparent, rgba(216,179,106,0.07), transparent); }
 #pg-char .row span { color: var(--pg-dim); }
@@ -90,9 +91,7 @@ function build() {
   headEl.style.minWidth = "0";
   head.append(emblemCv, headEl);
   bodyEl = el("div", "scroll");
-  const x = el("button", "pg-x", "×");
-  x.addEventListener("click", () => toggleChar(false));
-  z.append(head, bodyEl, x);
+  z.append(panelHead("Character", "character", () => toggleChar(false)), head, bodyEl);
   root.append(z);
   for (const ev of ["mousedown", "mouseup", "click", "contextmenu", "wheel"]) root.addEventListener(ev, (e) => e.stopPropagation());
   document.body.append(root);

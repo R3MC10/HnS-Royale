@@ -12,6 +12,8 @@ export const laneHook = {
   incoming: null as null | ((m: Monster, dmg: number, attacker: ServerPlayer | null) => number),
   /** True when this player may not be hurt by that player / monster (same team). */
   friendly: null as null | ((t: ServerPlayer, by: ServerPlayer | null | undefined, mon: Monster | null | undefined) => boolean),
+  /** A trial shrine spawned this guard / Warden (scale it to the lane level). */
+  trialSpawn: null as null | ((m: Monster) => void),
 };
 
 /** Elite mods that do not fit a lane (doc section 6): summons, bubbles, ground pools, auras that hurt everyone. */

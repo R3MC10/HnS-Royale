@@ -4,8 +4,9 @@
 import { DODGE_TIME, MAP_H, MAP_W, MAX_FLASK_SLOTS, MIN_PLAYERS_FOR_ROUND, PICKUP_RANGE, PLAYER_RADIUS, ATTACK_COMMIT } from "../shared/constants";
 import { RARITY_COLORS } from "../shared/content/loot";
 import { ELITE_MOD_BY_ID, MONSTER_BY_ID } from "../shared/content/monsters";
-import { isStructKind, STRUCT_KINDS, TEAM_COLORS } from "../shared/lanes";
-import { laneStructUp } from "./lanehud";
+import { CORE_RANGE, isStructKind, SPIRE_RANGE, STRUCT_KINDS, TEAM_COLORS, WAYPOINT_KINDS, waypointAt } from "../shared/lanes";
+import { t as trf } from "./i18n";
+import { isLaneMode, laneStructUp } from "./lanehud";
 import { flaskProps, type Item } from "../shared/items";
 import { decodeLook, NAKED_LOOK } from "../shared/look";
 import { currentMap, getPois, onMapChange, OBSTACLES, WALL, WATER } from "../shared/map";
@@ -295,6 +296,9 @@ export function pxFrame(g: CanvasRenderingContext2D, x: number, y: number, w: nu
   g.fillRect(x + 2, y + 2, w - 4, h - 4);
 }
 
+const GOLD_POP_LIFE = 1.6;
+const COLLAPSE_TIME = 2.6;
+const COLLAPSE_RUBBLE_AT = 1.2;
 const STRUCT_NAME: Record<string, string> = { lane_outer: "Outer Spire", lane_inner: "Inner Spire", lane_ward: "Ward", lane_core: "Core" };
 /** Breachway: can this structure be hit now (every one in front of it in its line is down)? */
 function laneStructOpen(k: string, tm: 0 | 1): boolean {
@@ -355,6 +359,14 @@ export class Renderer {
   private rings: Ring[] = [];
   private parts: Particle[] = [];
   private corpses: Corpse[] = [];
+  /** Breachway: structures falling (cracks, shudder, sinking, dust) and the rubble each one leaves. */
+  private collapses: { x: number; y: number; k: string; tm: number; t: number; seed: number }[] = [];
+  private rubble: { x: number; y: number; k: string; seed: number }[] = [];
+  /** Breachway: "+N gold" popups over your own hero (credits within 0.35 s add up into one). */
+  private goldPops: { n: number; t: number }[] = [];
+  /** Breachway: renderer time a turret last locked onto you (pulse on lock). */
+  private lockedAt = -9;
+  private lockedBy = 0;
   private motion = new Map<string, Motion>();
   private feel = new Map<string, Feel>(); // engine: procedural motion state
   private flatCv = document.createElement("canvas"); // engine: telegraph / ring layer (composited at lower opacity)
@@ -408,6 +420,8 @@ export class Renderer {
     this.dress = null;
     this.decals = [];
     this.corpses = [];
+    this.collapses = [];
+    this.rubble = [];
     this.groundBorn.clear();
     this.groundSince = -1;
     this.groundLast.clear();
@@ -661,10 +675,44 @@ export class Renderer {
           break;
         }
         case "mdie":
+          if (isStructKind(e.mk)) {
+            // Breachway: a structure collapses (no corpse, no blood): debris, dust, a heavy shake, rubble after.
+            const sm = this.lastMonsters.get(e.id);
+            this.collapses.push({ x: e.x, y: e.y, k: e.mk, tm: sm?.tm ?? 0, t: 0, seed: e.id * 7 + 3 });
+            const big = e.mk === "lane_core" ? 1.6 : e.mk === "lane_ward" ? 1.1 : 1.25;
+            const n = particleCount(Math.round(26 * big));
+            for (let i = 0; i < n; i++) {
+              const a = Math.random() * Math.PI * 2;
+              const sp = (50 + Math.random() * 110) * big;
+              this.parts.push({ x: e.x + Math.cos(a) * 14, y: e.y + Math.sin(a) * 14, z: 30 + Math.random() * 90 * big, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, vz: 60 + Math.random() * 160, g: 420, t: 0, life: 0.8 + Math.random() * 0.6, c: ["#5a524a", "#6e665b", "#3e3833", "#857a6a"][i & 3], c2: "#2a2522", s: 2 + Math.random() * 2.5 });
+            }
+            this.burst(e.x, e.y, 4, Math.round(16 * big), ["#9a8f7e", "#b3a893", "#7d7466"], 70 * big, { g: -6, vz: 12, life: 1.6, s: 4 });
+            this.shake = Math.max(this.shake, e.mk === "lane_core" ? 9 : 6);
+            break;
+          }
           if (e.mk !== "cragback") this.decals.push({ x: e.x, y: e.y, t: 0, life: 30, v: 6 + Math.floor(Math.random() * 2) });
           this.corpses.push({ kind: "m", id: e.id, x: e.x, y: e.y, t: 0, dir: dir8(e.a), mk: e.mk, r: e.r, el: e.el ? this.eliteOf(e.id) : undefined });
           this.burst(e.x, e.y, 2, 10, ["#4a423b", "#5c544a", "#3a3430"], 60, { g: 30, vz: 15, life: 0.7, s: 2 });
           break;
+        case "wp": {
+          // Waypoint travel: a team-blue flare where the hero left and where it arrived.
+          for (const [x, y] of [[e.x, e.y], [e.x2, e.y2]]) {
+            if (!this.onScreen(x, y, 120)) continue;
+            this.burst(x, y, 30, 18, ["#9fd0ff", "#e6f4ff", "#5a9cff"], 120, { g: -40, vz: 70, life: 0.9, s: 3 });
+          }
+          if (e.id === selfId) this.shake = Math.max(this.shake, 2);
+          break;
+        }
+        case "gold": {
+          if (e.id !== selfId || e.n <= 0) break;
+          const last = this.goldPops[this.goldPops.length - 1];
+          if (last && last.t < 0.35) {
+            last.n += e.n;
+            last.t = Math.min(last.t, 0.1);
+          } else this.goldPops.push({ n: e.n, t: 0 });
+          if (this.goldPops.length > 4) this.goldPops.shift();
+          break;
+        }
         case "info":
           this.feed.push({ text: e.text, color: "#c8d4ff", t: 0 });
           break;
@@ -687,6 +735,16 @@ export class Renderer {
     this.time += dt;
     for (const f of this.floats) f.t += dt;
     this.floats = this.floats.filter((f) => f.t < 0.9);
+    for (const gp of this.goldPops) gp.t += dt;
+    this.goldPops = this.goldPops.filter((gp) => gp.t < GOLD_POP_LIFE);
+    for (const c of this.collapses) {
+      c.t += dt;
+      if (c.t >= COLLAPSE_RUBBLE_AT && c.t - dt < COLLAPSE_RUBBLE_AT) this.rubble.push({ x: c.x, y: c.y, k: c.k, seed: c.seed });
+      // a second, lower dust roll as the body hits the ground
+      if (c.t >= 0.9 && c.t - dt < 0.9) this.burst(c.x, c.y, 2, 14, ["#a39884", "#8a8070", "#c0b49c"], 110, { g: -4, vz: 6, life: 1.8, s: 5 });
+    }
+    this.collapses = this.collapses.filter((c) => c.t < COLLAPSE_TIME);
+    if (this.rubble.length > 24) this.rubble.splice(0, this.rubble.length - 24);
     for (const f of this.feed) f.t += dt;
     this.feed = this.feed.filter((f) => f.t < FEED_TIME);
     for (const [id, t] of this.flashes) {
@@ -915,6 +973,7 @@ export class Renderer {
       for (const hz of v.hazards) this.drawHazard(hz);
       for (const m of v.monsters.values()) this.drawTelegraph(m);
       if (v.self?.alive) this.isoEllipse(v.self.x, v.self.y, PLAYER_RADIUS + 6, null, "rgba(255,240,210,0.22)", true);
+      this.drawLaneGround(v);
     } finally {
       this.flatEnd(flatPrev, 0.8);
     }
@@ -928,6 +987,13 @@ export class Renderer {
       if (!this.onScreen(c.x, c.y)) continue;
       list.push({ d: depthOf(c.x, c.y) - (c.t > 0.6 ? 18 : 0), fn: () => this.drawCorpse(c) });
     }
+    for (const c of this.collapses) if (this.onScreen(c.x, c.y, 200)) list.push({ d: depthOf(c.x, c.y), fn: () => this.drawCollapse(c) });
+    if (isLaneMode())
+      for (const tm of [0, 1] as const) for (const k of WAYPOINT_KINDS) {
+        const q = waypointAt(tm, k);
+        if (this.onScreen(q.x, q.y, 160)) list.push({ d: depthOf(q.x, q.y), fn: () => this.drawWaypointStone(q.x, q.y, tm, k === "base" || laneStructUp(k, tm)) });
+      }
+    for (const r of this.rubble) if (this.onScreen(r.x, r.y, 160) && !this.structAt(v, r.x, r.y)) list.push({ d: depthOf(r.x, r.y) - 4, fn: () => this.drawRubble(r) });
     for (const gi of v.ground) {
       if (!this.onScreen(gi.x, gi.y, 60)) continue;
       list.push({ d: depthOf(gi.x, gi.y) - 8, fn: () => this.drawGroundItem(gi) });
@@ -1033,6 +1099,7 @@ export class Renderer {
     this.drawParticles();
     runLayer("fx", g);
     for (const r of this.rings) this.drawRing(r);
+    this.drawTurretBeams(v);
     if (this.worldFx) this.worldFx(g, (x, y) => ({ x: this.sx(x, y), y: this.sy(x, y) }), (px) => this.up(px));
     for (const [id, t] of this.healGlow) {
       const p = v.players.get(id);
@@ -1106,8 +1173,20 @@ export class Renderer {
         const laneElite = m.tm !== undefined && rr >= 1 && m.hp > 0; // Breachway: elites / exiles always named and marked
         let bare = topBar && (f || (boss && m.hp < m.mhp));
         if (!bare && !f && !boss && !laneElite && (rr >= 1 || m.gm)) bare = rr <= 1 || named++ >= 3; // granted-mod (pack) normals count as magic
-        this.drawMonsterLabel(m, f, !me || modIds.has(m.id), bare);
-        if (laneElite) this.drawLaneEliteMark(m);
+        if (laneElite) {
+          // Breachway: lane elites keep their name right over their own bar (it used to stack up past every hero plate
+          // in the wave and float far above the elite); only the elite's own rects join the shared plate list.
+          const own: PlateRect[] = [];
+          const saved = this.plates;
+          this.plates = own;
+          try {
+            this.drawMonsterLabel(m, f, !me || modIds.has(m.id), bare);
+          } finally {
+            this.plates = saved;
+          }
+          this.plates.push(...own);
+          this.drawLaneEliteMark(m, own);
+        } else this.drawMonsterLabel(m, f, !me || modIds.has(m.id), bare);
       }
       for (const fn of this.plateText) fn(); // loop19: names over every bar
       this.plateText.length = 0;
@@ -1129,6 +1208,7 @@ export class Renderer {
       // HUD pass (native resolution): smooth serif floats; big hits are only brightened, never doubled.
       drawFloatText(this.g, f.text, this.sx(fx, fy), this.sy(fx, fy) - rise, f.color, f.big, Math.max(0, Math.min(1, 1.6 - f.t * 1.8)), 1 + 0.2 * Math.max(0, 1 - f.t / 0.12)); // pops in 20% larger
     }
+    this.drawLaneHudMarks(v);
     this.g.restore(); // end of the outside-the-HUD clip
 
     mark("labels");
@@ -1880,12 +1960,13 @@ export class Renderer {
   }
 
   /** Breachway: a bobbing rarity-coloured marker over a lane elite / exile (HUD pass, over every bar). */
-  private drawLaneEliteMark(m: MonsterSnap) {
+  private drawLaneEliteMark(m: MonsterSnap, own: PlateRect[]) {
     const col = RARITY_INFO[m.rr ?? 1].color;
     const x = this.sx(m.x, m.y);
-    // Just over the sprite's head (HUD units: about 1.5 x radius above the feet, rarity scale included).
+    // Just over the elite's own name plate (or its bar), never past other units' plates.
     const u = 1;
-    const y = this.sy(m.x, m.y) - (12 + m.r * 0.9) * this.rarityScale(m) + Math.sin(this.time * 4 + m.id) * 1.5;
+    const topY = own.length ? Math.min(...own.map((r) => r.y)) : this.sy(m.x, m.y) - this.up(30 * this.rarityScale(m));
+    const y = topY - 3 + Math.sin(this.time * 4 + m.id) * 1;
     this.plateText.push(() => {
       const g = this.g;
       g.save();
@@ -1938,8 +2019,309 @@ export class Renderer {
     this.plateText.push(() => skinText(this.g, name, x, y - 7, { size: 5, face: "display", align: "center", color: col, alpha: open ? 1 : 0.7 }));
   }
 
+  /** A living structure stands on this spot (a respawned Ward hides its old rubble). */
+  private structAt(v: View, x: number, y: number): boolean {
+    for (const m of v.monsters.values()) if (m.tm !== undefined && m.hp > 0 && isStructKind(m.k) && Math.abs(m.x - x) < 30 && Math.abs(m.y - y) < 30) return true;
+    return false;
+  }
+
+  /** Breachway, flat layer: ground cracks under a fall, turret range rings when an enemy hero comes near, your own lock ring. */
+  /** Breachway waypoint: a rune pillar (existing prop) over a team-coloured circle; grey and still once its structure fell. */
+  private drawWaypointStone(wx: number, wy: number, tm: 0 | 1, up: boolean) {
+    const g = this.g;
+    const x = this.sx(wx, wy);
+    const y = this.sy(wx, wy);
+    if (!drawProp(g, "bs_pillar_rune_b", x, y, ART_PX * 0.55, { alpha: up ? 1 : 0.55 })) {
+      g.fillStyle = "#4a4650";
+      g.fillRect(x - 6 * K, y - 40 * K, 12 * K, 40 * K);
+    }
+    if (!up) return;
+    g.save();
+    g.globalCompositeOperation = "lighter";
+    const pulse = 0.55 + 0.25 * Math.sin(this.time * 2.4 + wx * 0.01);
+    const gl = g.createRadialGradient(x, y - 34 * K, 0, x, y - 34 * K, 18 * K);
+    gl.addColorStop(0, TEAM_COLORS[tm] + "cc");
+    gl.addColorStop(1, TEAM_COLORS[tm] + "00");
+    g.globalAlpha = pulse;
+    g.fillStyle = gl;
+    g.fillRect(x - 18 * K, y - 52 * K, 36 * K, 36 * K);
+    g.restore();
+  }
+
+  private drawLaneGround(v: View) {
+    const g = this.g;
+    if (isLaneMode())
+      for (const tm of [0, 1] as const) for (const k of WAYPOINT_KINDS) {
+        const q = waypointAt(tm, k);
+        if (!this.onScreen(q.x, q.y, 120)) continue;
+        const up = k === "base" || laneStructUp(k, tm);
+        this.isoEllipse(q.x, q.y, 58, up ? TEAM_COLORS[tm] + "22" : null, up ? TEAM_COLORS[tm] + "aa" : "rgba(120,110,100,0.35)", false);
+        if (up) this.isoEllipse(q.x, q.y, 44, null, TEAM_COLORS[tm] + "55", false);
+      }
+    const cracks = ["fx_crack_ground_d", "fx_crack_ground_e", "fx_crack_ground_f"];
+    for (const c of this.collapses) {
+      if (!this.onScreen(c.x, c.y, 200)) continue;
+      const a = Math.min(1, c.t / 0.35);
+      this.groundFx(cracks[c.seed % 3], c.x, c.y, (c.k === "lane_core" ? 0.75 : 0.55) * (0.6 + 0.4 * a), a);
+    }
+    for (const r of this.rubble) {
+      if (!this.onScreen(r.x, r.y, 160) || this.structAt(v, r.x, r.y)) continue;
+      this.groundFx(cracks[r.seed % 3], r.x, r.y, r.k === "lane_core" ? 0.75 : 0.55, 0.85);
+    }
+    const me = v.self;
+    if (!me || me.tm === undefined) return;
+    for (const m of v.monsters.values()) {
+      if (m.tm === undefined || m.hp <= 0 || (m.k !== "lane_outer" && m.k !== "lane_inner" && m.k !== "lane_core")) continue;
+      if (!this.onScreen(m.x, m.y, 500)) continue;
+      const range = m.k === "lane_core" ? CORE_RANGE : SPIRE_RANGE;
+      // The ring shows only while an enemy hero of that turret (you, or a foe near their own turret) closes in.
+      let near = Infinity;
+      for (const p of v.players.values()) {
+        if (!p.alive || p.tm === undefined || p.tm === m.tm) continue;
+        near = Math.min(near, Math.hypot(p.x - m.x, p.y - m.y));
+      }
+      if (near > range + 250) continue;
+      const dMe = me.alive && me.tm !== m.tm ? Math.hypot(me.x - m.x, me.y - m.y) : Infinity;
+      const hostile = dMe < range + 250; // an enemy turret to you
+      const close = Math.max(0, Math.min(1, 1 - ((hostile ? dMe : near) - range) / 250));
+      const locked = m.fc === v.selfId;
+      const col = hostile ? (locked ? "255,70,50" : "255,150,90") : "200,210,255";
+      const a = (hostile ? 0.32 + 0.4 * close : 0.16 + 0.16 * close) * (locked ? 1 + 0.25 * Math.sin(this.time * 10) : 1);
+      g.save();
+      g.strokeStyle = `rgba(${col},${Math.min(1, a).toFixed(3)})`;
+      g.lineWidth = locked ? 2.4 : 1.6;
+      g.setLineDash(locked ? [] : [10, 6]);
+      g.lineDashOffset = -this.time * 14;
+      g.beginPath();
+      g.ellipse(this.sx(m.x, m.y), this.sy(m.x, m.y), range * K * this.hr, range * K * SQ * this.hr, 0, 0, Math.PI * 2);
+      g.stroke();
+      g.setLineDash([]);
+      g.fillStyle = `rgba(${col},${(a * 0.12).toFixed(3)})`;
+      g.fill();
+      g.restore();
+    }
+    // Your own hero under fire from a turret: a pulsing red ring at your feet.
+    if (me.alive && this.lockedBy) {
+      const p = 0.5 + 0.5 * Math.sin(this.time * 12);
+      this.isoEllipse(me.x, me.y, PLAYER_RADIUS + 10 + p * 5, "rgba(255,40,30,0.16)", `rgba(255,60,40,${(0.6 + 0.4 * p).toFixed(3)})`);
+    }
+  }
+
+  /** A top-down painted fx sprite laid flat on the ground (iso squash). */
+  private groundFx(id: string, x: number, y: number, scale: number, alpha: number) {
+    const g = this.g;
+    g.save();
+    g.translate(this.sx(x, y), this.sy(x, y));
+    g.scale(1, SQ);
+    drawProp(g, id, 0, 0, ART_PX * scale * 2.2, { alpha });
+    g.restore();
+  }
+
+  /** Beacon top of a structure (screen y). */
+  private beaconY(k: string, y: number) {
+    return y - (k === "lane_core" ? 150 : k === "lane_ward" ? 100 : 170) * K * 0.5;
+  }
+
+  /** Breachway: a falling structure. Cracks spread and it shudders (0-0.45 s), then it sinks into the ground and
+   *  crumbles (to 1.75 s) while dust rolls out; the rubble is laid at COLLAPSE_RUBBLE_AT. */
+  private drawCollapse(c: { x: number; y: number; k: string; tm: number; t: number; seed: number }) {
+    const g = this.g;
+    const prop = STRUCT_PROP[c.k] ?? ["bs_obelisk", 1];
+    const scale = ART_PX * prop[1];
+    const box = propBox(prop[0], scale);
+    const H = box ? box.t : 160 * K;
+    const W = box ? Math.max(-box.l, box.r) : 60 * K;
+    const x0 = this.sx(c.x, c.y);
+    const y0 = this.sy(c.x, c.y);
+    const shudder = c.t < 0.45 ? Math.sin(c.t * 70) * 2.2 * (c.t / 0.45) : 0;
+    const sinkT = Math.max(0, Math.min(1, (c.t - 0.45) / 1.25));
+    const sink = sinkT * sinkT * H * 0.85;
+    const tilt = (c.seed % 2 ? 1 : -1) * sinkT * 0.12;
+    const alpha = Math.max(0, Math.min(1, 1 - (c.t - 1.35) / 0.4));
+    if (alpha > 0) {
+      g.save();
+      // clip at the ground line: the body sinks into the earth
+      g.beginPath();
+      g.rect(x0 - W * 2 - 40, y0 - H * 1.5 - 40, W * 4 + 80, H * 1.5 + 40 + 6 * K);
+      g.clip();
+      g.translate(x0 + shudder, y0 + sink);
+      g.rotate(tilt);
+      if (!drawProp(g, prop[0], 0, 0, scale, { alpha })) {
+        g.globalAlpha = alpha;
+        g.fillStyle = "#4a4650";
+        g.fillRect(-W * 0.4, -H, W * 0.8, H);
+      }
+      // cracks: dark jagged lines with a faint hot edge, growing over the first half second
+      const grow = Math.min(1, c.t / 0.45);
+      g.globalAlpha = alpha;
+      g.lineCap = "round";
+      for (let i = 0; i < 6; i++) {
+        let px = (hash2(c.seed, i, 11) - 0.5) * W * 0.9;
+        let py = -H * (0.15 + hash2(c.seed, i, 12) * 0.7);
+        g.beginPath();
+        g.moveTo(px, py);
+        const steps = Math.ceil(4 * grow);
+        for (let sI = 0; sI < steps; sI++) {
+          px += (hash2(c.seed + sI, i, 13) - 0.5) * W * 0.35;
+          py += (hash2(c.seed + sI, i, 14) - 0.3) * H * 0.12;
+          g.lineTo(px, py);
+        }
+        g.strokeStyle = "rgba(255,190,120,0.35)";
+        g.lineWidth = 3.2;
+        g.stroke();
+        g.strokeStyle = "rgba(18,12,10,0.9)";
+        g.lineWidth = 1.6;
+        g.stroke();
+      }
+      g.restore();
+    }
+    // dust skirt rolling out at the base while it sinks
+    const dustT = Math.max(0, c.t - 0.3);
+    if (dustT > 0 && dustT < 2.2) {
+      const da = Math.max(0, 1 - dustT / 2.2) * 0.55;
+      const R = (40 + dustT * 70) * K * (c.k === "lane_core" ? 1.4 : 1);
+      g.save();
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2 + c.seed;
+        const px = x0 + Math.cos(a) * R * 0.6;
+        const py = y0 + Math.sin(a) * R * 0.6 * SQ - dustT * 10 * K;
+        const r = R * (0.45 + hash2(c.seed, i, 21) * 0.3);
+        const gr = g.createRadialGradient(px, py, 0, px, py, r);
+        gr.addColorStop(0, `rgba(150,140,122,${da.toFixed(3)})`);
+        gr.addColorStop(1, "rgba(150,140,122,0)");
+        g.fillStyle = gr;
+        g.fillRect(px - r, py - r, r * 2, r * 2);
+      }
+      g.restore();
+    }
+  }
+
+  /** Breachway: what a fallen structure leaves (painted rubble props, no new art). */
+  private drawRubble(r: { x: number; y: number; k: string; seed: number }) {
+    const g = this.g;
+    const x = this.sx(r.x, r.y);
+    const y = this.sy(r.x, r.y);
+    const fl = r.seed % 2 === 1;
+    if (r.k === "lane_outer" || r.k === "lane_inner") {
+      drawProp(g, "bs_debris_rubble", x - 26 * K, y + 6 * K, ART_PX * 0.7, { flipX: !fl });
+      drawProp(g, "bs_spire_broken", x, y, ART_PX * (r.k === "lane_inner" ? 0.95 : 0.85), { flipX: fl });
+    } else if (r.k === "lane_ward") {
+      drawProp(g, "bs_rubble_slabs_b", x, y, ART_PX * 0.8, { flipX: fl });
+      drawProp(g, "bs_crystal_small_" + "abc"[r.seed % 3], x + 14 * K, y + 4 * K, ART_PX * 0.55, { flipX: !fl });
+    } else {
+      drawProp(g, "bs_rubble_slabs_a", x - 18 * K, y - 4 * K, ART_PX * 1.0, { flipX: fl });
+      drawProp(g, "bs_rubble_slabs_c", x + 22 * K, y + 6 * K, ART_PX * 0.9, { flipX: !fl });
+      drawProp(g, "bs_debris_rubble", x, y + 10 * K, ART_PX * 0.9, { flipX: fl });
+    }
+  }
+
+  /** Breachway: a turret's lock on a hero: a beam from its beacon to the hero's chest (over the darkness). */
+  private drawTurretBeams(v: View) {
+    const g = this.g;
+    let lockedBy = 0;
+    for (const m of v.monsters.values()) {
+      if (!m.fc || m.hp <= 0 || m.tm === undefined) continue;
+      const p = v.players.get(m.fc);
+      if (!p || !p.alive) continue;
+      const self = p.id === v.selfId;
+      if (self) lockedBy = m.id;
+      if (!this.onScreen(m.x, m.y, 500) && !this.onScreen(p.x, p.y)) continue;
+      const x1 = this.sx(m.x, m.y);
+      const y1 = this.beaconY(m.k, this.sy(m.x, m.y));
+      const x2 = this.sx(p.x, p.y);
+      const y2 = this.sy(p.x, p.y) - 22 * ZP;
+      const pulse = 0.65 + 0.35 * Math.sin(this.time * 14);
+      g.save();
+      g.globalCompositeOperation = "lighter";
+      g.lineCap = "round";
+      g.strokeStyle = self ? `rgba(255,60,40,${(0.35 * pulse).toFixed(3)})` : `rgba(255,170,90,${(0.22 * pulse).toFixed(3)})`;
+      g.lineWidth = self ? 7 : 5;
+      g.beginPath();
+      g.moveTo(x1, y1);
+      g.lineTo(x2, y2);
+      g.stroke();
+      g.strokeStyle = self ? `rgba(255,200,170,${(0.85 * pulse).toFixed(3)})` : `rgba(255,220,180,${(0.6 * pulse).toFixed(3)})`;
+      g.lineWidth = self ? 2 : 1.4;
+      g.setLineDash([8, 6]);
+      g.lineDashOffset = -this.time * 60;
+      g.stroke();
+      g.restore();
+    }
+    if (lockedBy && lockedBy !== this.lockedBy) {
+      this.lockedAt = this.time;
+      this.onLaneLock?.();
+    }
+    this.lockedBy = lockedBy;
+  }
+  /** Breachway: called once when a turret locks onto your hero (audio hook, set by main.ts). */
+  onLaneLock?: () => void;
+
+  /** Breachway, HUD pass: "+N gold" over your hero, and the lock warning over any hero a turret is shooting. */
+  private drawLaneHudMarks(v: View) {
+    const g = this.g;
+    for (const m of v.monsters.values()) {
+      if (!m.fc || m.hp <= 0) continue;
+      const p = v.players.get(m.fc);
+      if (!p || !p.alive || !this.onScreen(p.x, p.y)) continue;
+      const self = p.id === v.selfId;
+      const x = this.sx(p.x, p.y);
+      const pop = self ? Math.max(0, 1 - (this.time - this.lockedAt) / 0.3) : 0;
+      const y = this.plateY(p) - (self ? 15 : 12) - Math.sin(this.time * 6);
+      const s = (self ? 6.5 : 4.5) * (1 + pop * 0.6);
+      const a = 0.75 + 0.25 * Math.sin(this.time * 12);
+      g.save();
+      g.globalAlpha = a;
+      g.fillStyle = self ? "#ff3b2a" : "#ff9a4a";
+      g.strokeStyle = "#140806";
+      g.lineWidth = 1.2;
+      g.beginPath();
+      g.moveTo(x, y - s * 1.6);
+      g.lineTo(x + s, y);
+      g.lineTo(x - s, y);
+      g.closePath();
+      g.fill();
+      g.stroke();
+      g.restore();
+      skinText(g, "!", x, y - s * 1.35, { size: s * 0.95, face: "display", align: "center", color: "#1a0a06", weight: 700 });
+      if (self) skinText(g, trf("Spire targeting you"), x, y - s * 1.6 - 7, { size: 4.6, face: "body", align: "center", color: "#ff8a70", alpha: a });
+    }
+    const me = v.self;
+    if (!me || !this.goldPops.length) return;
+    let k = 0;
+    for (const gp of this.goldPops) {
+      const tt = gp.t / GOLD_POP_LIFE;
+      const x = this.sx(me.x, me.y) + 16;
+      const y = this.sy(me.x, me.y) - this.up(28 * ZP + gp.t * 26) - k * 9;
+      const alpha = Math.max(0, Math.min(1, 1.25 - tt * 1.25));
+      const sc = 1 + 0.3 * Math.max(0, 1 - gp.t / 0.15);
+      const text = trf("+{n} gold", { n: gp.n });
+      const size = 6 * sc;
+      const cr = 2.6 * sc;
+      const tw = skinTextW(text, { size, face: "display" });
+      const cx = x - tw / 2 - cr - 1.5;
+      const cy = y - size * 0.55;
+      g.save();
+      g.globalAlpha = alpha;
+      const cg = g.createRadialGradient(cx - cr * 0.3, cy - cr * 0.3, 0, cx, cy, cr);
+      cg.addColorStop(0, "#fff2b0");
+      cg.addColorStop(0.6, "#f0c040");
+      cg.addColorStop(1, "#8a6010");
+      g.fillStyle = cg;
+      g.strokeStyle = "#2a1c06";
+      g.lineWidth = 0.6;
+      g.beginPath();
+      g.arc(cx, cy, cr, 0, Math.PI * 2);
+      g.fill();
+      g.stroke();
+      g.restore();
+      skinText(g, text, x, y - size, { size, face: "display", align: "center", color: "#ffd24a", alpha, weight: 700 });
+      k++;
+    }
+  }
+
   /** Breachway structures: existing painted props on a team-coloured rune ring (no new art). */
   private drawStructure(m: MonsterSnap) {
+    if (m.hp <= 0) return; // fallen: drawCollapse / drawRubble
     const g = this.g;
     const x = this.sx(m.x, m.y);
     const y = this.sy(m.x, m.y);

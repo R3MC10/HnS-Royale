@@ -1,8 +1,10 @@
-import { applyCurrencyTo, applyingCurrency } from "./inventory";
+import { applyCurrencyTo, applyingCurrency, attachSkinBackdrop } from "./inventory";
+import { panelHead } from "./progstyle";
 // Client side of skills: the 16-slot skill bar HUD (one row of 8; holding Ctrl shows the second 8 in place), the Skills panel (K) for socketing
 // and cutting gems, gem tooltips, and which slot the held keys use. The server (server/skills.ts)
 // owns the truth; this only mirrors the `bar` / `skcd` messages and sends socket / unsocket / cut.
-import { ATTR_COLOR, ATTR_NAME, MAX_EQUIPPED_SKILLS, MAX_SOCKETS } from "../shared/content/gems";
+import { ATTR_COLOR, ATTR_NAME, MAX_EQUIPPED_SKILLS, MAX_SOCKETS, WEAPON_CLASS_NAME, isGenericMelee, weaponReqText, type SkillGemDef, type SupportGemDef } from "../shared/content/gems";
+import { craftTargetOk } from "../shared/crafttarget";
 import type { GridEntry } from "../shared/grid";
 import { itemInfoHooks, type Item } from "../shared/items";
 import type { ClientMsg, PlayerSnap, ServerMsg } from "../shared/protocol";
@@ -23,10 +25,13 @@ import {
   isRough,
   isSkillGem,
   isSupportGem,
+  rankSupports,
   skillDefOf,
   socketCount,
   supportDefOf,
+  supportRefusal,
   supportTier,
+  tagLine,
   upgradeRefusal,
   weaponOf,
   type Attrs,
@@ -195,6 +200,13 @@ const CSS = `
 .sk-slot.nomana canvas { filter: grayscale(1) brightness(0.45); }
 .sk-slot.nomana::after { content: ""; position: absolute; inset: 0; border-radius: 2px; background: rgba(30,50,140,0.28); pointer-events: none; z-index: 2; }
 .sk-slot.bad canvas { filter: grayscale(0.85) brightness(0.62); }
+/* weapon the skill is bound to (PoE2), shown while the active weapon set can't use it */
+.sk-slot .req { position: absolute; left: 0; right: 0; bottom: 1px; text-align: center; font: 700 max(7px, calc(var(--sz) * 0.17))/1.1 var(--font-body, "Palatino Linotype", Georgia, serif);
+  color: #ffb4a4; text-shadow: 0 0 2px #000, 0 1px 1px #000; pointer-events: none; z-index: 4; white-space: nowrap; overflow: hidden; display: none; }
+.sk-slot.bad .req { display: block; }
+/* currency being applied (Lapidary's Polish / Awl / Blighted Ember): valid gem targets glow, others dim */
+.sk-slot.applyok, #sk-panel .applyok { box-shadow: 0 0 0 1px #f0c060, 0 0 9px 1px rgba(240,190,90,0.55) !important; }
+.sk-slot.applybad canvas, #sk-panel .applybad canvas { opacity: 0.38; }
 /* cannot be used with this weapon: red wash + a red bar across the picture */
 .sk-slot.bad::after { content: ""; position: absolute; inset: 0; border-radius: 2px; pointer-events: none; z-index: 2;
   background: linear-gradient(135deg, transparent 46.5%, rgba(210,44,32,0.92) 46.5%, rgba(210,44,32,0.92) 53.5%, transparent 53.5%), rgba(120,16,12,0.2); }
@@ -230,60 +242,131 @@ const CSS = `
 .sk-slot.innate canvas { opacity: 0.9; }
 .sk-slot.innate::before { content: "W"; position: absolute; right: 1px; bottom: 0; font-size: 7px; line-height: 1; color: #e0c890; z-index: 4; text-shadow: 0 0 2px #000; }
 
-#sk-panel { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); display: none; z-index: 11; color: var(--ink);
-  font-size: 12px; padding: 12px 14px; max-width: calc(100vw - 24px); max-height: calc(100vh - 24px); overflow: auto; box-sizing: border-box; user-select: none; }
-/* STYLE v2: smooth serif type + carved dark frame (the body default is the old mono pixel face). */
-#sk-panel { font-family: var(--font-body, "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif); font-size: 13px;
-  -webkit-font-smoothing: antialiased; font-smooth: auto; color: #e2d4b6;
-  background: radial-gradient(ellipse at 50% 0%, rgba(70,40,26,0.35), transparent 60%), linear-gradient(180deg, rgba(22,19,24,0.97), rgba(10,9,12,0.98));
-  border: 1px solid rgba(216,179,106,0.35); border-radius: 6px;
-  box-shadow: 0 0 0 1px #050405, inset 0 0 0 1px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,230,180,0.06), 0 18px 60px rgba(0,0,0,0.85); }
-#sk-panel .hd b, #sk-panel .bag h4, #sk-panel .bar-h { font-family: var(--font-title, "Cinzel", "Trajan Pro", "Palatino Linotype", Georgia, serif); color: #d8b36a; }
-#sk-panel .cut button { font-family: inherit !important; font-size: 12px !important; }
-#sk-panel { scrollbar-width: thin; scrollbar-color: #6a5636 #0c0b0d; }
-#sk-panel .hd { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; border-bottom: 1px solid #2c2830; padding-bottom: 4px; margin-bottom: 6px; }
-#sk-panel .hd b { color: #c8a060; letter-spacing: 3px; font-size: 14px; }
-#sk-panel .hd span { color: #a89c84; }
-#sk-panel .hint { color: #8a7f6c; margin-bottom: 8px; min-height: 15px; }
-#sk-panel .hint b { color: #f0d8a0; }
-#sk-panel .cols { display: flex; gap: 16px; flex-wrap: wrap; }
-#sk-panel .bar { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(8, auto); grid-auto-flow: column; gap: 4px 14px; }
-#sk-panel.narrow .cols { flex-direction: column; flex-wrap: nowrap; }
-#sk-panel.narrow .bar { grid-template-columns: 1fr; grid-template-rows: none; grid-auto-flow: row; }
-#sk-panel.narrow .srow { min-width: 0; }
-#sk-panel.narrow .bag { max-width: none; order: -1; } /* docked: bag + cut choices on top, never below the fold */
-#sk-panel.narrow .bgrid { grid-template-columns: repeat(auto-fill, 44px); }
-#sk-panel .srow { display: flex; align-items: center; gap: 6px; padding: 3px 4px; border-radius: 4px; background: rgba(255,255,255,0.02); min-width: 300px; }
-#sk-panel .srow.focus { background: rgba(240,200,120,0.08); box-shadow: inset 0 0 0 1px #6a5430; }
-#sk-panel .k { width: 54px; flex: none; color: #d8c08a; font-size: 10px; text-align: right; white-space: nowrap; overflow: hidden; }
-#sk-panel .gcell { position: relative; width: 40px; height: 40px; flex: none; border-radius: 6px; background: #09080a; box-shadow: inset 0 0 0 1px #2c2830; cursor: pointer; }
-#sk-panel .gcell canvas { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 6px; }
+/* ---- Skills panel (left dock, PoE2 skill-gem list): shared header (progstyle .pc-head) + one scrolling column of
+   skill cards; each card = gem, name / level / tags, upgrade button, support socket row and recommended supports. */
+#sk-panel { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); display: none; flex-direction: column; z-index: 11;
+  width: 520px; max-width: calc(100vw - 24px); max-height: calc(100vh - 24px); overflow: hidden; box-sizing: border-box; user-select: none;
+  font-family: var(--font-body, "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif); font-size: 13px; color: #e2d4b6;
+  -webkit-font-smoothing: antialiased; font-smooth: auto; background: #100e0d; box-shadow: 0 18px 60px rgba(0,0,0,0.85), 0 0 0 1px #050405; }
+#sk-panel.open { display: flex; }
+#sk-panel .skb { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 6px 14px 14px; zoom: var(--hns-ui, 1); scrollbar-width: thin; scrollbar-color: #6a5636 #0c0b0d; }
+#sk-panel .sum { display: flex; flex-wrap: wrap; gap: 5px; margin: 4px 0 6px; }
+#sk-panel .sum span { padding: 2px 8px; border-radius: 10px; font-size: 12px; color: #b8a888; background: rgba(0,0,0,0.42); box-shadow: inset 0 0 0 1px rgba(216,184,96,0.16); white-space: nowrap; }
+#sk-panel .sum span i { font-style: normal; margin-right: 5px; }
+#sk-panel .sum span b { color: #f0dcb0; font-weight: 600; font-variant-numeric: tabular-nums; }
+#sk-panel .sum span.over b { color: #ff7a5a; }
+#sk-panel .hint { color: #8a7f6c; font-size: 12px; line-height: 1.4; min-height: 17px; margin: 2px 0 0; }
+#sk-panel .hint b { color: #f0d8a0; font-weight: 600; }
+/* skill card */
+#sk-panel .card { position: relative; margin: 0 0 6px; padding: 7px 8px 7px; border-radius: 4px;
+  background: linear-gradient(180deg, rgba(34,29,28,0.92), rgba(16,14,14,0.92)); box-shadow: inset 0 0 0 1px rgba(216,184,96,0.14), inset 0 1px 0 rgba(255,230,190,0.05), 0 1px 3px rgba(0,0,0,0.6);
+  transition: box-shadow .12s; }
+#sk-panel .card:hover { box-shadow: inset 0 0 0 1px rgba(216,184,96,0.34), inset 0 1px 0 rgba(255,230,190,0.07), 0 1px 3px rgba(0,0,0,0.6); }
+#sk-panel .card.focus { box-shadow: inset 0 0 0 1px #c8a060, 0 0 10px rgba(216,179,106,0.25); }
+#sk-panel .card.innate { background: linear-gradient(180deg, rgba(28,26,26,0.85), rgba(14,13,13,0.85)); }
+#sk-panel .ctop { display: flex; align-items: center; gap: 8px; }
+#sk-panel .kc { flex: none; min-width: 30px; padding: 2px 4px; border-radius: 3px; text-align: center; font: 700 10px/1.2 var(--font-body, Georgia, serif); color: #e8d6a8;
+  background: linear-gradient(180deg, #2a221c, #110e0c); box-shadow: inset 0 0 0 1px rgba(216,184,96,0.3); white-space: nowrap; }
+#sk-panel .gcell { position: relative; width: 44px; height: 44px; flex: none; border-radius: 4px; background: #09080a; cursor: pointer;
+  box-shadow: inset 0 0 0 1px #050405, 0 0 0 1px rgba(216,184,96,0.3); transition: box-shadow .1s, transform .1s; }
+#sk-panel .gcell:hover { box-shadow: inset 0 0 0 1px #050405, 0 0 0 1px #d8b36a, 0 0 8px rgba(216,179,106,0.4); }
+#sk-panel .gcell:active { transform: scale(0.95); }
+#sk-panel .gcell canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important; border-radius: 4px; }
 #sk-panel .gcell.target { box-shadow: inset 0 0 0 1px #050405, 0 0 0 1px #f0d070, 0 0 8px rgba(240,208,112,0.6); }
-#sk-panel .nm { flex: 1; min-width: 70px; line-height: 1.25; }
-#sk-panel .nm i { display: block; font-style: normal; color: #7a705e; font-size: 10px; }
-#sk-panel .socks { display: flex; gap: 3px; }
-#sk-panel .sock { position: relative; width: 22px; height: 22px; border-radius: 50%; background: radial-gradient(circle at 50% 40%, #16141a, #050405);
-  box-shadow: inset 0 0 0 1px #3c3842; cursor: pointer; }
-#sk-panel .sock canvas { position: absolute; inset: -2px; width: 26px !important; height: 26px !important; border-radius: 50%; }
-#sk-panel .sock.locked { opacity: 0.18; cursor: default; }
+#sk-panel .card.bad .ctop .gcell canvas { filter: grayscale(0.85) brightness(0.6); }
+#sk-panel .card.bad .ctop .gcell::after { content: ""; position: absolute; inset: 0; border-radius: 4px; pointer-events: none;
+  background: linear-gradient(135deg, transparent 46.5%, rgba(210,44,32,0.9) 46.5%, rgba(210,44,32,0.9) 53.5%, transparent 53.5%); }
+#sk-panel .ci { flex: 1; min-width: 0; line-height: 1.3; }
+#sk-panel .ci .n { font: 600 14px/1.25 var(--font-title, "Cinzel", Georgia, serif); letter-spacing: 0.03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#sk-panel .ci .s { font-size: 11.5px; color: #9a8c74; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#sk-panel .ci .tg { font-size: 10.5px; color: #7a705e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#sk-panel .ci .why { font-size: 11.5px; color: #e07a6a; }
+#sk-panel .tgl { flex: none; font: 600 10px var(--font-title, Georgia, serif); letter-spacing: 0.1em; text-transform: uppercase; padding: 2px 6px; border-radius: 3px; color: #7a705e; box-shadow: inset 0 0 0 1px #3a3530; }
+#sk-panel .tgl.on { color: #c8f0a0; box-shadow: inset 0 0 0 1px #5a8a3a, 0 0 6px rgba(120,220,80,0.3); }
+#sk-panel .up { flex: none; display: flex; align-items: center; gap: 5px; padding: 3px 8px; }
+#sk-panel .up::before { content: ""; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 7px solid #8fe070;
+  filter: drop-shadow(0 0 3px rgba(140,230,100,0.8)); }
+/* support socket row */
+#sk-panel .crow, #sk-panel .rec { display: flex; align-items: center; gap: 6px; margin: 6px 0 0 38px; }
+#sk-panel .rec { align-items: flex-start; margin-top: 5px; }
+#sk-panel .rec .lb { line-height: 22px; }
+#sk-panel .rcs { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+#sk-panel .crow .lb, #sk-panel .rec .lb { width: 76px; flex: none; font: 600 9.5px var(--font-title, Georgia, serif); letter-spacing: 0.12em; text-transform: uppercase; color: #8c7448; }
+#sk-panel .socks { display: flex; align-items: center; }
+#sk-panel .sock { position: relative; width: 30px; height: 30px; flex: none; border-radius: 50%; cursor: pointer;
+  background: radial-gradient(circle at 50% 40%, #1c181c, #050405 70%); box-shadow: inset 0 0 0 1px #4a4038, inset 0 2px 5px rgba(0,0,0,0.9), 0 0 0 1px #050405;
+  transition: box-shadow .1s, transform .1s; }
+/* the link bar between sockets (linked sockets) */
+#sk-panel .sock + .sock { margin-left: 8px; }
+#sk-panel .sock + .sock::before { content: ""; position: absolute; left: -9px; top: 50%; width: 10px; height: 4px; margin-top: -2px; border-radius: 2px;
+  background: linear-gradient(180deg, #8a7250, #3a2e22); box-shadow: 0 0 0 1px #050405; }
+#sk-panel .sock + .sock.locked::before { background: #1a1716; }
+#sk-panel .sock:hover:not(.locked) { box-shadow: inset 0 0 0 1px #d8b36a, inset 0 2px 5px rgba(0,0,0,0.9), 0 0 8px rgba(216,179,106,0.45); }
+#sk-panel .sock:active:not(.locked) { transform: scale(0.93); }
+#sk-panel .sock canvas { position: absolute; inset: 1px; width: 28px !important; height: 28px !important; border-radius: 50%; }
+#sk-panel .sock.empty::after { content: "+"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 16px/1 Georgia, serif; color: #5a4e40; }
+#sk-panel .sock.empty:hover::after { color: #e0c27a; }
+#sk-panel .sock.locked { cursor: default; opacity: 0.32; background: repeating-linear-gradient(135deg, #0b0a0a 0 3px, #161413 3px 6px); }
 #sk-panel .sock.off canvas { filter: grayscale(1) brightness(0.6); }
-#sk-panel .sock.off::after { content: "!"; position: absolute; right: -2px; top: -4px; color: #ff6a5a; font-weight: bold; font-size: 11px; text-shadow: 0 0 2px #000; }
-#sk-panel .sock.target { box-shadow: inset 0 0 0 1px #050405, 0 0 0 1px #f0d070, 0 0 6px rgba(240,208,112,0.7); }
-#sk-panel .inner { margin-left: 4px; width: 30px; height: 30px; border-radius: 50%; }
-#sk-panel .inner canvas { border-radius: 50%; }
-#sk-panel .bag h4, #sk-panel .bar-h { margin: 2px 0 6px; color: #c8a060; letter-spacing: 2px; font-size: 11px; text-transform: uppercase; }
-#sk-panel .bag { min-width: 236px; max-width: 280px; }
-#sk-panel .bgrid { display: grid; grid-template-columns: repeat(5, 44px); gap: 5px; }
-#sk-panel .bgrid .gcell { width: 44px; height: 44px; }
+#sk-panel .sock.off::after { content: "!"; position: absolute; right: -3px; top: -5px; color: #ff6a5a; font: bold 12px Georgia, serif; text-shadow: 0 0 2px #000; }
+#sk-panel .sock.target { box-shadow: inset 0 0 0 1px #050405, 0 0 0 1px #f0d070, 0 0 7px rgba(240,208,112,0.75); }
+#sk-panel .sock.picking { box-shadow: inset 0 0 0 1px #050405, 0 0 0 2px #f0d8a0, 0 0 10px rgba(240,216,160,0.8); }
+#sk-panel .sock.inner { width: 34px; height: 34px; margin-right: 10px; border-radius: 6px; }
+#sk-panel .sock.inner canvas { width: 32px !important; height: 32px !important; border-radius: 6px; }
+#sk-panel .sock.inner + .sock::before { display: none; }
+/* recommended supports */
+#sk-panel .rc { display: flex; align-items: center; gap: 4px; padding: 1px 7px 1px 2px; border-radius: 11px; font-size: 11.5px; line-height: 20px; cursor: default; white-space: nowrap;
+  color: #7a705e; background: rgba(0,0,0,0.35); box-shadow: inset 0 0 0 1px #2e2924; }
+#sk-panel .rc canvas { width: 18px !important; height: 18px !important; border-radius: 50%; opacity: 0.55; }
+#sk-panel .rc.own { color: #f0dcb0; cursor: pointer; background: linear-gradient(180deg, #3a2c20, #1e1610); box-shadow: inset 0 0 0 1px #8a6a3a; }
+#sk-panel .rc.own canvas { opacity: 1; }
+#sk-panel .rc.own::after { content: "+"; color: #9fe080; font-weight: 700; }
+#sk-panel .rc.own:hover { box-shadow: inset 0 0 0 1px #e0c070, 0 0 8px rgba(224,180,90,0.4); color: #fff2d0; }
+#sk-panel .rc.own:active { transform: translateY(1px); }
+#sk-panel .rc.full, #sk-panel .rc.used { color: #a89878; }
+#sk-panel .rc.in { color: #8fd0a0; box-shadow: inset 0 0 0 1px rgba(110,180,110,0.4); }
+#sk-panel .rc.in canvas { opacity: 1; }
+/* empty bar slots */
+#sk-panel .empties { display: flex; flex-wrap: wrap; gap: 4px; }
+#sk-panel .eslot { display: flex; align-items: center; gap: 6px; padding: 3px 8px 3px 3px; border-radius: 4px; cursor: pointer; color: #6c6458; font-size: 12px;
+  background: rgba(0,0,0,0.3); box-shadow: inset 0 0 0 1px #2c2724; transition: box-shadow .1s, color .1s; }
+#sk-panel .eslot:hover { color: #e0c27a; box-shadow: inset 0 0 0 1px #8a6a3a; }
+#sk-panel .eslot:active { transform: translateY(1px); }
+#sk-panel .eslot.target { color: #f0d070; box-shadow: inset 0 0 0 1px #f0d070, 0 0 6px rgba(240,208,112,0.5); }
+/* bag */
+#sk-panel .bgrid { display: grid; grid-template-columns: repeat(auto-fill, 44px); gap: 5px; }
 #sk-panel .bgrid .gcell.sel { box-shadow: inset 0 0 0 1px #050405, 0 0 0 2px #f0d8a0, 0 0 10px rgba(240,216,160,0.7); }
-#sk-panel .lv { position: absolute; right: 3px; bottom: 1px; font-size: 9px; font-weight: bold; color: #f0e2c4; text-shadow: 0 0 2px #000; pointer-events: none; }
-#sk-panel .cut { margin-top: 10px; border-top: 1px solid #241f26; padding-top: 6px; }
-#sk-panel .cut button { display: block; width: 100%; margin: 3px 0; padding: 4px 6px; text-align: left; font: 11px var(--mono); color: #e8dcc4; cursor: pointer;
-  background: linear-gradient(180deg, #221c24, #121014); border: 1px solid #050405; box-shadow: inset 0 0 0 1px #3c3842; border-radius: 3px; }
-#sk-panel .cut button:hover:not(:disabled) { box-shadow: inset 0 0 0 1px #c8a060; }
+#sk-panel .bgrid .gcell.upg::before { content: ""; position: absolute; left: 3px; top: 3px; z-index: 1; border-left: 4px solid transparent; border-right: 4px solid transparent;
+  border-bottom: 6px solid #8fe070; filter: drop-shadow(0 0 2px #000); }
+#sk-panel .lv { position: absolute; right: 3px; bottom: 1px; font-size: 9px; font-weight: bold; color: #f0e2c4; text-shadow: 0 0 2px #000, 0 0 2px #000; pointer-events: none; z-index: 1; }
+#sk-panel .cut { margin-top: 4px; }
+#sk-panel .cut button { display: flex; gap: 8px; width: 100%; margin: 3px 0; padding: 5px 8px; text-align: left; font: 12px var(--font-body, Georgia, serif); color: #e8dcc4; cursor: pointer;
+  background: linear-gradient(180deg, #221c1c, #121010); border: 1px solid #050405; box-shadow: inset 0 0 0 1px #3c3530; border-radius: 3px; transition: box-shadow .1s; }
+#sk-panel .cut button:hover:not(:disabled) { box-shadow: inset 0 0 0 1px #c8a060, 0 0 8px rgba(200,160,96,0.3); }
+#sk-panel .cut button:active:not(:disabled) { transform: translateY(1px); }
 #sk-panel .cut button:disabled { color: #5a5248; cursor: default; }
-#sk-panel .cut button em { font-style: normal; float: right; color: #7a705e; }
-#sk-panel .empty-note { color: #5a5248; }
+#sk-panel .cut button span { flex: 1; }
+#sk-panel .cut button em { font-style: normal; color: #7a705e; }
+#sk-panel .empty-note { color: #5a5248; font-size: 12px; }
+/* support picker (click a socket) */
+#sk-sock { position: fixed; display: none; z-index: 30; width: 300px; max-height: min(420px, 70vh); overflow-y: auto; box-sizing: border-box; padding: 5px;
+  font: 13px var(--font-body, "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif); color: #e2d4b6; user-select: none;
+  background: linear-gradient(180deg, rgba(22,19,20,0.98), rgba(10,9,10,0.98)); border: 1px solid rgba(216,179,106,0.5); border-radius: 4px;
+  box-shadow: 0 0 0 1px #050405, 0 10px 30px rgba(0,0,0,0.85); scrollbar-width: thin; scrollbar-color: #6a5636 #0c0b0d; }
+#sk-sock .h { font: 600 12px var(--font-title, "Cinzel", Georgia, serif); letter-spacing: 0.08em; color: #d8b36a; padding: 2px 6px 5px; border-bottom: 1px solid #2c2724; margin-bottom: 3px; }
+#sk-sock .r { display: flex; align-items: center; gap: 8px; padding: 3px 6px; border-radius: 3px; cursor: pointer; }
+#sk-sock .r:hover { background: rgba(216,179,106,0.16); }
+#sk-sock .r:active { background: rgba(216,179,106,0.26); }
+#sk-sock .r canvas { width: 26px !important; height: 26px !important; border-radius: 50%; flex: none; box-shadow: 0 0 0 1px #050405; }
+#sk-sock .r .t { flex: 1; min-width: 0; line-height: 1.2; }
+#sk-sock .r .t i { display: block; font-style: normal; font-size: 11px; color: #8a7f6c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#sk-sock .r .st { font: 600 9.5px var(--font-title, Georgia, serif); letter-spacing: 0.1em; text-transform: uppercase; color: #e0c070; white-space: nowrap; }
+#sk-sock .r.no { cursor: default; color: #6c6458; }
+#sk-sock .r.no:hover { background: none; }
+#sk-sock .r.no canvas { filter: grayscale(1) brightness(0.5); }
+#sk-sock .r.no .t i { color: #b0604e; white-space: normal; }
+#sk-sock .r.out { color: #a89c84; }
+#sk-sock .note { color: #8a7f6c; padding: 4px 6px; font-size: 12px; }
 `;
 
 // ---- the HUD bar --------------------------------------------------------------------
@@ -300,6 +383,7 @@ interface SlotEls {
   key: HTMLDivElement;
   en: HTMLDivElement;
   enFill: HTMLElement;
+  req: HTMLElement; // weapon the skill needs (shown while unusable)
   icon: string;
   /** Bar index this element showed at the last rebuild (k, or k + BAR_MAIN while Ctrl swaps the set). */
   idx: number;
@@ -402,24 +486,27 @@ function ensureDom() {
     frm.className = "frm";
     const tg = document.createElement("span");
     tg.className = "tg";
-    el.append(frm, cd, tg, cdt, en, key);
+    const req = document.createElement("span");
+    req.className = "req";
+    el.append(frm, cd, tg, cdt, en, key, req);
     const idx = () => slotEls[k].idx;
     el.addEventListener("mouseenter", (e) => showTip("bar" + k, slotTipHtml(idx()), e.clientX, e.clientY));
     el.addEventListener("mousemove", (e) => showTip("bar" + k, slotTipHtml(idx()), e.clientX, e.clientY));
     el.addEventListener("mouseleave", () => hideTip("bar" + k));
     el.addEventListener("mousedown", (e) => e.stopPropagation());
-    el.addEventListener("click", () => {
+    el.addEventListener("click", (e) => {
       hideTip("bar" + k);
+      const g = S.bar[idx()]?.gem;
+      if (g && applyingCurrency()) return applyCurrencyTo(g.id, e.shiftKey); // currency onto the gem in this slot
       togglePicker(idx(), el);
     });
     row.appendChild(el);
-    slotEls.push({ el, cd, cdt, key, en, enFill, icon: "?", idx: k });
+    slotEls.push({ el, cd, cdt, key, en, enFill, req, icon: "?", idx: k });
   }
   document.body.appendChild(barEl);
 
   panelEl = document.createElement("div");
   panelEl.id = "sk-panel";
-  panelEl.className = "frame";
   panelEl.addEventListener("contextmenu", (e) => e.preventDefault());
   panelEl.addEventListener("mousedown", (e) => e.stopPropagation());
   document.body.appendChild(panelEl);
@@ -506,6 +593,7 @@ export function selfAliveForHud(): boolean {
   return S.lastSnap > 0 && now() - S.lastSnap < 1500 && S.alive;
 }
 
+let applyIdSeen = -1;
 function updateBar() {
   if (!barEl) return;
   const show = now() - S.lastSnap < 1500 && S.lastSnap > 0;
@@ -532,6 +620,11 @@ function updateBar() {
   const A = acts();
   const t = now();
   const overSpirit = spiritUsedNow() > Math.round(S.stats.spirit);
+  const cur = applyingCurrency();
+  if ((cur?.id ?? -1) !== applyIdSeen) {
+    applyIdSeen = cur?.id ?? -1;
+    panelDirty = true; // re-mark the panel's gems for the held currency
+  }
   for (let k = 0; k < BAR_MAIN; k++) {
     const se = slotEls[k];
     const i = se.idx;
@@ -548,6 +641,13 @@ function updateBar() {
     const isToggle = a?.kind === "aura" || a?.kind === "meta";
     se.el.classList.toggle("nomana", !!a && !isToggle && a.cost > S.mp + 1e-6);
     se.el.classList.toggle("bad", !!a && !a.ok);
+    const rd = !!a && !a.ok ? skillDefOf(slotOf(i)?.gem) : undefined;
+    const rt = rd?.weapons ? (isGenericMelee(rd) ? "Melee" : WEAPON_CLASS_NAME[rd.weapons[0]] ?? rd.weapons[0]) : "";
+    if (se.req.textContent !== rt) se.req.textContent = rt;
+    const g = cur ? S.bar[i]?.gem : null;
+    const ok = cur && g ? craftTargetOk(cur, g) : null;
+    se.el.classList.toggle("applyok", ok === true);
+    se.el.classList.toggle("applybad", ok === false);
     se.el.classList.toggle("on", S.on.has(i));
     se.el.classList.toggle("nospirit", overSpirit && isToggle && S.on.has(i) && (a?.spirit ?? 0) > 0);
     se.el.classList.toggle("held", !!input.skills[i] && !!a);
@@ -673,7 +773,8 @@ export function togglePanel(force?: boolean) {
     focusSlot = -1;
     hideTip();
   }
-  panelEl!.style.display = panelOpen ? "block" : "none";
+  if (!panelOpen) closeSockPicker();
+  panelEl!.classList.toggle("open", panelOpen);
   panelDirty = true;
 }
 
@@ -698,9 +799,16 @@ function selected(): Item | null {
   return S.inv.find((e) => e.it.id === selId)?.it ?? null;
 }
 
-function cell(cls: string, it: Item | null, size: number, opts: { tip?: () => string; click?: () => void; rclick?: () => void; lv?: string; owner: string; canvas?: HTMLCanvasElement }): HTMLDivElement {
+function cell(cls: string, it: Item | null, size: number, opts: { tip?: () => string; click?: () => void; rclick?: () => void; lv?: string; owner: string; canvas?: HTMLCanvasElement; target?: Item | null }): HTMLDivElement {
   const el = document.createElement("div");
   el.className = cls;
+  // The item a held currency would act on (the bar slot's own gem has no `it`: its picture is the skill icon).
+  const tgt = opts.target !== undefined ? opts.target : it;
+  const cur = applyingCurrency();
+  if (cur && tgt) {
+    const ok = craftTargetOk(cur, tgt);
+    if (ok !== null) el.classList.add(ok ? "applyok" : "applybad");
+  }
   const cv = opts.canvas ?? (it ? panelGemCanvas(it, size) : null);
   if (cv) el.appendChild(cv);
   if (opts.lv) {
@@ -717,7 +825,7 @@ function cell(cls: string, it: Item | null, size: number, opts: { tip?: () => st
   }
   el.addEventListener("click", (e) => {
     e.preventDefault();
-    if (it && applyingCurrency()) return applyCurrencyTo(it.id, e.shiftKey); // Awl / Polish onto a gem already on the bar
+    if (tgt && applyingCurrency()) return applyCurrencyTo(tgt.id, e.shiftKey); // Awl / Polish / Blighted Ember onto a gem on the bar or in the bag
     opts.click?.();
   });
   el.addEventListener("contextmenu", (e) => {
@@ -735,6 +843,63 @@ function act(m: ClientMsg) {
 }
 
 let panelIconVer = -1;
+let bodyEl: HTMLDivElement | null = null;
+
+function mk<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text?: string): HTMLElementTagNameMap[K] {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+function hoverTip(e: HTMLElement, owner: string, html: () => string) {
+  e.addEventListener("mouseenter", (ev) => showTip(owner, html(), ev.clientX, ev.clientY));
+  e.addEventListener("mousemove", (ev) => showTip(owner, html(), ev.clientX, ev.clientY));
+  e.addEventListener("mouseleave", () => hideTip(owner));
+}
+
+/** The best crystal in the bag that can raise this gem (highest level), or null. */
+function bestRough(gem: Item): Item | null {
+  let best: Item | null = null;
+  for (const e of S.inv) if (isRough(e.it) && !upgradeRefusal(e.it, gem) && (!best || e.it.l > best.l)) best = e.it;
+  return best;
+}
+
+function freeSocket(bs: BarSlot): number {
+  const n = socketCount(bs.gem);
+  for (let j = 0; j < n; j++) if (!bs.sups[j]) return j;
+  return -1;
+}
+
+/** Bar slot that already holds this support (PoE2: one of each support per character), or -1. */
+function socketedAt(supId: string): number {
+  return S.bar.findIndex((s) => s.sups.some((g) => supportDefOf(g)?.id === supId));
+}
+
+/** What a slot's supports apply to: the skill, or a meta gem's socketed spell (same rule as the server). */
+function supTargetDef(i: number): SkillGemDef | undefined {
+  const bs = S.bar[i];
+  const d = skillDefOf(bs.gem);
+  return d?.kind === "meta" ? (skillDefOf(bs.inner) ?? undefined) : (d ?? undefined);
+}
+
+/** Why this support can't go into socket j of slot i (null = it can); mirrors server/skills.ts socket checks. */
+function supRefusalAt(sup: SupportGemDef, i: number, j: number): string | null {
+  const t = supTargetDef(i);
+  if (!t) return "Socket a spell into the meta gem first";
+  const bs = S.bar[i];
+  const why = supportRefusal(sup, t, bs.sups.filter((_, k) => k !== j).map((g) => supportDefOf(g)));
+  if (why) return why;
+  const at = socketedAt(sup.id);
+  if (at >= 0 && at !== i) return `Already socketed in ${skillDefOf(S.bar[at].gem)?.name ?? "another skill"}`;
+  return null;
+}
+
+function supCanvas(def: SupportGemDef, size: number, it?: Item): HTMLCanvasElement {
+  if (it) return panelGemCanvas(it, size);
+  return supportIcon(def.id, size, 1) ?? gemCanvas({ id: -1, b: "sup_" + def.id, n: def.name, l: 1 } as unknown as Item, size);
+}
+
 function buildPanel() {
   if (!panelEl) return;
   panelDirty = false;
@@ -743,58 +908,72 @@ function buildPanel() {
   if (selId >= 0 && !sel) selId = -1;
   const A = acts();
   const spiritUsed = [...S.on].reduce((t, i) => t + (A[i]?.spirit ?? 0), 0);
+  const spiritMax = Math.round(S.stats.spirit);
   const equipped = barSkillIds(S.bar).length;
-  panelEl.innerHTML = "";
+  const keep = bodyEl?.scrollTop ?? 0;
+  hideTip();
 
-  const hd = document.createElement("div");
-  hd.className = "hd";
-  hd.innerHTML =
-    `<b>SKILLS</b><span>Gems ${equipped} / ${MAX_EQUIPPED_SKILLS} · Spirit ${spiritUsed} / ${Math.round(S.stats.spirit)} · ` +
-    `Mana ${Math.floor(S.mp)} / ${Math.round(S.stats.maxMana)} · ` +
-    `<span style="color:${ATTR_COLOR.str}">Str ${Math.floor(S.attrs.str)}</span> <span style="color:${ATTR_COLOR.dex}">Dex ${Math.floor(S.attrs.dex)}</span> <span style="color:${ATTR_COLOR.int}">Int ${Math.floor(S.attrs.int)}</span></span>`;
-  panelEl.appendChild(hd);
+  const body = mk("div", "skb");
+  bodyEl = body;
+  panelEl.replaceChildren(panelHead("Skills", "skills", () => togglePanel(false)), body);
+  attachSkinBackdrop(panelEl, "panel");
+  body.addEventListener("scroll", () => hideTip());
 
-  const hint = document.createElement("div");
-  hint.className = "hint";
-  if (!sel) hint.innerHTML = "Click a gem in your bag to pick it up, then click a bar slot or a socket. Right-click a socketed gem to take it out.";
-  else if (isSkillGem(sel)) hint.innerHTML = `<b>${esc(gemDisplayName(sel))}</b>: click a bar slot${skillDefOf(sel)?.kind === "meta" ? "" : " (or a meta gem's centre socket)"}. Click the gem again to put it down.`;
-  else if (isSupportGem(sel)) hint.innerHTML = `<b>${esc(gemDisplayName(sel))}</b>: click a socket of a skill (or the skill itself for the first free socket).`;
-  else hint.innerHTML = `<b>${esc(gemDisplayName(sel))}</b>: choose what to cut it into, or raise one of your gems.`;
-  panelEl.appendChild(hint);
+  // summary chips
+  const sum = mk("div", "sum");
+  const chip = (label: string, val: string, cls = "", color = "") => {
+    const c = mk("span", cls);
+    c.appendChild(mk("i", "", label));
+    const b = mk("b", "", val);
+    if (color) b.style.color = color;
+    c.appendChild(b);
+    sum.appendChild(c);
+  };
+  chip("Skill gems", `${equipped} / ${MAX_EQUIPPED_SKILLS}`);
+  chip("Spirit", `${spiritUsed} / ${spiritMax}`, spiritUsed > spiritMax ? "over" : "");
+  chip("Mana", `${Math.round(S.stats.maxMana)}`);
+  chip("Str", String(Math.floor(S.attrs.str)), "", ATTR_COLOR.str);
+  chip("Dex", String(Math.floor(S.attrs.dex)), "", ATTR_COLOR.dex);
+  chip("Int", String(Math.floor(S.attrs.int)), "", ATTR_COLOR.int);
+  body.appendChild(sum);
 
-  const cols = document.createElement("div");
-  cols.className = "cols";
-  panelEl.appendChild(cols);
+  const hint = mk("div", "hint");
+  if (!sel) hint.textContent = "Click a socket to link a support. Click a gem in your bag to pick it up. Right-click a socketed gem to take it out.";
+  else {
+    hint.appendChild(mk("b", "", gemDisplayName(sel)));
+    hint.append(": ");
+    hint.appendChild(
+      mk("span", "", isSkillGem(sel) ? "click an empty slot or a meta gem's spell socket. Click the gem again to put it down." : isSupportGem(sel) ? "click a socket of a skill. Click the gem again to put it down." : "choose what to cut it into, or raise one of your gems."),
+    );
+  }
+  body.appendChild(hint);
 
-  // -- bar slots --
-  const barCol = document.createElement("div");
-  const bh = document.createElement("div");
-  bh.className = "bar-h";
-  bh.textContent = "Skill bar";
-  barCol.appendChild(bh);
-  const bar = document.createElement("div");
-  bar.className = "bar";
-  barCol.appendChild(bar);
-  cols.appendChild(barCol);
-  // main set then the Ctrl set; the grid flows by column (main left, Ctrl right) or, docked narrow, one column
-  for (let i = 0; i < BAR_SIZE; i++) bar.appendChild(slotRow(i, sel, A[i]));
+  // skill cards (filled slots), then the empty slots
+  body.appendChild(mk("div", "pc-sec", "Skill gems"));
+  const empties: number[] = [];
+  for (let i = 0; i < BAR_SIZE; i++) {
+    const def = skillDefOf(slotOf(i)?.gem);
+    if (def || i === 0) body.appendChild(skillCard(i, sel, A[i]));
+    else empties.push(i);
+  }
+  if (empties.length) {
+    const row = mk("div", "empties");
+    for (const i of empties) row.appendChild(emptySlot(i, sel));
+    body.append(mk("div", "pc-sec", "Empty slots"), row);
+  }
 
-  // -- bag gems --
-  const bag = document.createElement("div");
-  bag.className = "bag";
-  const h4 = document.createElement("h4");
-  h4.textContent = "Gems in your bag";
-  bag.appendChild(h4);
-  const grid = document.createElement("div");
-  grid.className = "bgrid";
+  // bag gems
+  body.appendChild(mk("div", "pc-sec", "Gems in your bag"));
+  const grid = mk("div", "bgrid");
   const gems = bagGems();
   for (const it of gems) {
     const lv = isSupportGem(it) ? ["I", "II", "III"][Math.max(0, Math.min(2, Math.round(it.l) - 1))] : String(Math.round(it.l));
+    const up = isSkillGem(it) ? bestRough(it) : null;
     grid.appendChild(
-      cell("gcell" + (it.id === selId ? " sel" : ""), it, 44, {
+      cell("gcell" + (it.id === selId ? " sel" : "") + (up ? " upg" : ""), it, 44, {
         owner: "bag" + it.id,
         lv,
-        tip: () => gemTipHtml(it, it.id === selId ? "Click to put it down" : "Click to pick it up"),
+        tip: () => gemTipHtml(it, (up ? `Upgrade available: level ${Math.round(up.l)} crystal in your bag · ` : "") + (it.id === selId ? "Click to put it down" : "Click to pick it up")),
         click: () => {
           selId = selId === it.id ? -1 : it.id;
           hideTip();
@@ -803,70 +982,99 @@ function buildPanel() {
       }),
     );
   }
-  bag.appendChild(grid);
-  if (!gems.length) {
-    const n = document.createElement("div");
-    n.className = "empty-note";
-    n.textContent = "No gems yet. Monsters drop Rough Crystals and the odd cut gem.";
-    bag.appendChild(n);
+  body.appendChild(grid);
+  if (!gems.length) body.appendChild(mk("div", "empty-note", "No gems yet. Monsters drop Rough Crystals and the odd cut gem."));
+  if (sel && isRough(sel)) body.appendChild(cutBox(sel));
+  body.scrollTop = keep;
+  if (focusSlot >= 0) {
+    const f = body.querySelector<HTMLElement>(".card.focus, .eslot.focus");
+    if (f) f.scrollIntoView({ block: "nearest" });
   }
-  if (sel && isRough(sel)) bag.appendChild(cutBox(sel));
-  cols.appendChild(bag);
 }
 
-function slotRow(i: number, sel: Item | null, a: SkillAction | null | undefined): HTMLDivElement {
-  const row = document.createElement("div");
-  row.className = "srow" + (i === focusSlot ? " focus" : "");
-  const k = document.createElement("div");
-  k.className = "k";
-  k.textContent = skillSlotLabel(i);
-  row.appendChild(k);
+function emptySlot(i: number, sel: Item | null): HTMLDivElement {
+  const canTake = !!sel && isSkillGem(sel);
+  const e = mk("div", "eslot" + (canTake ? " target" : "") + (i === focusSlot ? " focus" : ""));
+  e.append(mk("span", "kc", skillSlotLabel(i)), mk("span", "", "Empty"));
+  hoverTip(e, "es" + i, () => `<div class="tt-name" style="color:#a89c84">Empty slot</div><div class="tt-sub">${canTake ? "Click to socket the picked-up gem here" : "Click to choose a skill gem from your bag"}</div>`);
+  e.addEventListener("click", () => {
+    hideTip();
+    if (canTake) act({ t: "socket", id: sel!.id, slot: i });
+    else togglePicker(i, e);
+  });
+  return e;
+}
+
+function skillCard(i: number, sel: Item | null, a: SkillAction | null | undefined): HTMLDivElement {
   const bs = S.bar[i];
   const eff = slotOf(i);
   const def = skillDefOf(eff?.gem);
   const innate = !bs.gem && !!def;
-  const canTake = !!sel && isSkillGem(sel);
-  const supTarget = !!sel && isSupportGem(sel) && !!bs.gem;
+  const bad = !!a && !a.ok && !!a.why && def?.kind !== "meta";
+  const card = mk("div", "card" + (i === focusSlot ? " focus" : "") + (innate ? " innate" : "") + (bad ? " bad" : ""));
+  const top = mk("div", "ctop");
+  card.appendChild(top);
+  top.appendChild(mk("span", "kc", skillSlotLabel(i)));
 
-  const gemCell = cell("gcell" + (canTake ? " target" : ""), null, 40, {
+  const canTake = !!sel && isSkillGem(sel);
+  const gemCell = cell("gcell" + (canTake ? " target" : ""), null, 44, {
     owner: "slot" + i,
-    canvas: def ? skillIconCopy(def.id, 40) : i === 0 ? skillIconCopy(basicIconId(a), 40) : undefined,
+    target: bs.gem,
+    canvas: def ? skillIconCopy(def.id, 44) : skillIconCopy(basicIconId(a), 44),
     tip: () => slotTipHtml(i) + (bs.gem ? `<div class="tt-hint">Right-click to take the gem out</div>` : ""),
     click: () => {
       if (!sel) return;
       if (isSkillGem(sel)) act({ t: "socket", id: sel.id, slot: i });
       else if (isSupportGem(sel) && bs.gem) {
-        const n = socketCount(bs.gem);
-        let free = -1;
-        for (let j = 0; j < n; j++) if (!bs.sups[j]) {
-          free = j;
-          break;
-        }
-        act({ t: "socket", id: sel.id, slot: i, sup: free < 0 ? 0 : free });
+        const f = freeSocket(bs);
+        act({ t: "socket", id: sel.id, slot: i, sup: f < 0 ? 0 : f });
       }
     },
     rclick: () => {
       if (bs.gem) act({ t: "unsocket", slot: i });
     },
   });
-  if (innate) gemCell.style.opacity = "0.75";
-  row.appendChild(gemCell);
+  top.appendChild(gemCell);
 
-  const nm = document.createElement("div");
-  nm.className = "nm";
+  const ci = mk("div", "ci");
   if (def && a) {
-    const tag = innate ? "weapon skill" : def.kind === "aura" || def.kind === "meta" ? (S.on.has(i) ? "on" : "off") : `${a.cost} mana`;
-    nm.innerHTML = `<span style="color:${ATTR_COLOR[def.attr]}">${esc(def.name)}</span><i>Lv ${a.level} · ${esc(tag)}</i>`;
-  } else if (i === 0) nm.innerHTML = `<span style="color:#e8e0d0">${esc(a?.name ?? "Weapon Strike")}</span><i>free basic attack</i>`;
-  else nm.innerHTML = `<span style="color:#5a5248">empty</span>`;
-  row.appendChild(nm);
+    const n = mk("div", "n", def.name);
+    n.style.color = ATTR_COLOR[def.attr];
+    const tag = innate ? "weapon skill" : def.kind === "aura" || def.kind === "meta" ? `${a.spirit} spirit` : `${a.cost} mana`;
+    ci.append(n, mk("div", "s", `Level ${a.level} · ${tag}`), mk("div", "tg", tagLine(def, a.tags)));
+    if (!a.ok && a.why) ci.appendChild(mk("div", "why", a.why)); // PoE2 weapon restriction (active set)
+  } else {
+    const n = mk("div", "n", a?.name ?? "Weapon Strike");
+    n.style.color = "#e8e0d0";
+    ci.append(n, mk("div", "s", "Free basic attack"));
+  }
+  top.appendChild(ci);
 
-  // meta gem centre socket (the triggered spell)
-  if (def?.kind === "meta" && bs.gem) {
+  if (def && (def.kind === "aura" || def.kind === "meta") && !innate) top.appendChild(mk("span", "tgl" + (S.on.has(i) ? " on" : ""), S.on.has(i) ? "On" : "Off"));
+
+  // PoE2 "level up" button: a crystal in the bag above this gem's level raises it.
+  if (bs.gem && !innate) {
+    const r = bestRough(bs.gem);
+    if (r) {
+      const b = mk("button", "pc-btn up", `Lv ${gemLevel(bs.gem)} → ${Math.round(r.l)}`);
+      hoverTip(b, "up" + i, () => `<div class="tt-name" style="color:#9fe080">Upgrade available</div><div class="tt-sub">Uses a level ${Math.round(r.l)} crystal from your bag</div>`);
+      b.addEventListener("click", () => act({ t: "cut", id: r.id, target: bs.gem!.id }));
+      top.appendChild(b);
+    }
+  }
+
+  if (!bs.gem) return card; // the innate weapon skill / basic attack have no sockets
+
+  // support sockets (meta gems: the spell socket first)
+  const crow = mk("div", "crow");
+  crow.appendChild(mk("span", "lb", "Supports"));
+  const socks = mk("div", "socks");
+  crow.appendChild(socks);
+  if (def?.kind === "meta") {
     const innerGem = bs.inner ?? null;
-    const c = cell("gcell inner" + (canTake && skillDefOf(sel!)?.kind !== "meta" ? " target" : ""), innerGem, 30, {
+    const c = cell("sock inner" + (canTake && skillDefOf(sel!)?.kind !== "meta" ? " target" : "") + (innerGem ? "" : " empty"), innerGem, 32, {
       owner: "inner" + i,
-      tip: () => (innerGem ? gemTipHtml(innerGem, "Right-click to take it out") : `<div class="tt-name" style="color:#a89c84">Spell socket</div><div class="tt-sub">Socket a spell here; it fires when the energy is full</div>`),
+      tip: () => (innerGem ? gemTipHtml(innerGem, "Right-click to take it out") : `<div class="tt-name" style="color:#a89c84">Spell socket</div><div class="tt-sub">Pick up a spell gem and click here; it fires when the energy is full</div>`),
       click: () => {
         if (sel && isSkillGem(sel)) act({ t: "socket", id: sel.id, slot: i, inner: 1 });
       },
@@ -874,28 +1082,25 @@ function slotRow(i: number, sel: Item | null, a: SkillAction | null | undefined)
         if (innerGem) act({ t: "unsocket", slot: i, inner: 1 });
       },
     });
-    row.appendChild(c);
+    socks.appendChild(c);
   }
-
-  // support sockets
-  const socks = document.createElement("div");
-  socks.className = "socks";
-  const n = bs.gem ? socketCount(bs.gem) : 0;
+  const n = socketCount(bs.gem);
+  const supSel = !!sel && isSupportGem(sel);
   for (let j = 0; j < MAX_SOCKETS; j++) {
     const sup = bs.sups[j] ?? null;
     const locked = j >= n;
     const st = sup ? a?.supports.find((x) => x.id === supportDefOf(sup)?.id) : undefined;
     const off = !!sup && !!st && !st.ok;
-    const el = cell("sock" + (locked ? " locked" : "") + (off ? " off" : "") + (!locked && supTarget ? " target" : ""), sup, 26, {
+    const el = cell("sock" + (locked ? " locked" : sup ? "" : " empty") + (off ? " off" : "") + (!locked && supSel ? " target" : "") + (sockPick && sockPick.slot === i && sockPick.sup === j ? " picking" : ""), sup, 28, {
       owner: `sock${i}_${j}`,
       tip: locked
-        ? undefined
-        : () =>
-            sup
-              ? gemTipHtml(sup, (off && st?.why ? st.why + " · " : "") + "Right-click to take it out")
-              : `<div class="tt-name" style="color:#a89c84">Empty socket</div><div class="tt-sub">Pick up a support gem and click here</div>`,
+        ? () => `<div class="tt-name" style="color:#8a7f6c">Locked socket</div><div class="tt-sub">Lapidary's Awl adds sockets</div>`
+        : () => (sup ? gemTipHtml(sup, (off && st?.why ? st.why + " · " : "") + "Click to swap · right-click to take it out") : `<div class="tt-name" style="color:#a89c84">Empty socket</div><div class="tt-sub">Click to link a support gem</div>`),
       click: () => {
-        if (!locked && sel && isSupportGem(sel)) act({ t: "socket", id: sel.id, slot: i, sup: j });
+        if (locked) return;
+        if (sel && isSupportGem(sel)) return act({ t: "socket", id: sel.id, slot: i, sup: j });
+        hideTip();
+        openSockPicker(i, j, el);
       },
       rclick: () => {
         if (sup) act({ t: "unsocket", slot: i, sup: j });
@@ -903,8 +1108,116 @@ function slotRow(i: number, sel: Item | null, a: SkillAction | null | undefined)
     });
     socks.appendChild(el);
   }
-  row.appendChild(socks);
-  return row;
+  card.appendChild(crow);
+
+  // recommended supports: curated table + tag fit (shared/content/supportrecs.ts), only ones that link
+  const tdef = supTargetDef(i);
+  if (tdef) {
+    const mine = new Set(bs.sups.map((g) => supportDefOf(g)?.id).filter(Boolean) as string[]);
+    const recs = rankSupports(tdef).slice(0, 4);
+    if (recs.length) {
+      const rec = mk("div", "rec");
+      rec.appendChild(mk("span", "lb", "Recommended"));
+      const rcs = mk("div", "rcs");
+      rec.appendChild(rcs);
+      const free = freeSocket(bs);
+      for (const r of recs) {
+        const owned = bagGems().find((it) => isSupportGem(it) && supportDefOf(it)?.id === r.def.id);
+        const at = socketedAt(r.def.id);
+        const inHere = mine.has(r.def.id);
+        const cls = inHere ? "in" : at >= 0 ? "used" : owned ? (free >= 0 ? "own" : "full") : "";
+        const c = mk("span", "rc" + (cls ? " " + cls : ""));
+        c.append(supCanvas(r.def, 18, owned), mk("span", "", r.def.name));
+        const note = inHere
+          ? "Linked"
+          : at >= 0
+            ? `Already socketed in ${skillDefOf(S.bar[at].gem)?.name ?? "another skill"}`
+            : owned
+              ? free >= 0
+                ? "In your bag: click to socket it"
+                : "In your bag, but no free socket"
+              : "Not owned: cut a Rough Support Crystal";
+        hoverTip(c, `rc${i}_${r.def.id}`, () => `<div class="tt-name" style="color:${ATTR_COLOR[r.def.attr]}">${esc(r.def.name)}</div><div class="tt-sub">${esc(r.def.desc)}</div><div class="tt-hint">${esc(note)}</div>`);
+        if (cls === "own") c.addEventListener("click", () => act({ t: "socket", id: owned!.id, slot: i, sup: free }));
+        rcs.appendChild(c);
+      }
+      card.appendChild(rec);
+    }
+  }
+  return card;
+}
+
+// ---- support picker (click a socket) -----------------------------------------------------
+
+let sockEl: HTMLDivElement | null = null;
+let sockPick: { slot: number; sup: number } | null = null;
+
+function closeSockPicker() {
+  if (!sockPick) return;
+  sockPick = null;
+  if (sockEl) sockEl.style.display = "none";
+  panelEl?.querySelectorAll(".sock.picking").forEach((e) => e.classList.remove("picking"));
+}
+
+function openSockPicker(i: number, j: number, anchor: HTMLElement) {
+  if (sockPick && sockPick.slot === i && sockPick.sup === j) return closeSockPicker();
+  if (!sockEl) {
+    sockEl = mk("div");
+    sockEl.id = "sk-sock";
+    sockEl.addEventListener("mousedown", (e) => e.stopPropagation());
+    sockEl.addEventListener("contextmenu", (e) => e.preventDefault());
+    document.body.appendChild(sockEl);
+    window.addEventListener("mousedown", (e) => {
+      if (sockPick && !(e.target instanceof Node && sockEl!.contains(e.target))) closeSockPicker();
+    }, true);
+    registerPanel({ isOpen: () => !!sockPick, close: closeSockPicker });
+  }
+  sockPick = { slot: i, sup: j };
+  const bs = S.bar[i];
+  const cur = bs.sups[j] ?? null;
+  const tdef = supTargetDef(i);
+  sockEl.replaceChildren(mk("div", "h", tdef ? `Link a support to ${tdef.name}` : "Link a support"));
+  const rank = new Map<string, number>();
+  const recIds = new Set<string>();
+  if (tdef) rankSupports(tdef).forEach((r, n) => {
+    rank.set(r.def.id, n);
+    if (n < 4) recIds.add(r.def.id);
+  });
+  const rows = bagGems()
+    .filter(isSupportGem)
+    .map((it) => ({ it, d: supportDefOf(it)!, why: supRefusalAt(supportDefOf(it)!, i, j) }))
+    .sort((x, y) => (x.why ? 1 : 0) - (y.why ? 1 : 0) || (rank.get(x.d.id) ?? 99) - (rank.get(y.d.id) ?? 99));
+  for (const { it, d, why } of rows) {
+    const r = mk("div", "r" + (why ? " no" : ""));
+    const t = mk("div", "t", gemDisplayName(it));
+    t.style.color = why ? "" : ATTR_COLOR[d.attr];
+    t.appendChild(mk("i", "", why ?? d.desc));
+    r.append(panelGemCanvas(it, 26), t);
+    if (!why && recIds.has(d.id)) r.appendChild(mk("span", "st", "Recommended"));
+    if (!why)
+      r.addEventListener("click", () => {
+        closeSockPicker();
+        act({ t: "socket", id: it.id, slot: i, sup: j });
+      });
+    hoverTip(r, "sp" + it.id, () => gemTipHtml(it, why ?? "Click to socket it"));
+    sockEl.appendChild(r);
+  }
+  if (!rows.length) sockEl.appendChild(mk("div", "note", "No support gems in your bag. Cut a Rough Support Crystal."));
+  if (cur) {
+    const r = mk("div", "r out", "Take the support out");
+    r.addEventListener("click", () => {
+      closeSockPicker();
+      act({ t: "unsocket", slot: i, sup: j });
+    });
+    sockEl.appendChild(r);
+  }
+  sockEl.style.display = "block";
+  const a = anchor.getBoundingClientRect();
+  const w = sockEl.offsetWidth;
+  const h = sockEl.offsetHeight;
+  sockEl.style.left = `${Math.round(Math.max(6, Math.min(window.innerWidth - w - 6, a.left)))}px`;
+  sockEl.style.top = `${Math.round(a.bottom + 6 + h > window.innerHeight - 6 ? Math.max(6, a.top - h - 6) : a.bottom + 6)}px`;
+  anchor.classList.add("picking");
 }
 
 function cutBox(rough: Item): HTMLDivElement {
@@ -922,7 +1235,7 @@ function cutBox(rough: Item): HTMLDivElement {
     const preview: Item = { ...rough, b: (isSup ? "sup_" : "gem_") + o.id, n: o.name };
     const def = skillDefOf(preview);
     const wk = S.mainhand ? weaponOf(S.mainhand).kind : undefined;
-    const wrong = !!def?.weapons && !(wk && def.weapons.includes(wk));
+    const wrong = !!def?.weapons && !(wk && def.weapons.includes(wk)); // PoE2 weapon restriction (active set)
     const note = o.why ?? (onBar.has(preview.b) ? "you have it" : wrong ? "wrong weapon" : "");
     const b = document.createElement("button");
     b.disabled = !o.ok;
@@ -931,7 +1244,7 @@ function cutBox(rough: Item): HTMLDivElement {
       hideTip();
       act({ t: "cut", id: rough.id, gem: o.id });
     });
-    const tip = () => gemTipHtml(preview, o.why ?? (onBar.has(preview.b) ? "You already have this gem" : wrong ? `Will not work with your ${wk ?? "bare hands"}: needs ${def!.weapons!.join(" / ")}` : isSup ? "Click to cut, then socket it into a skill" : "Click to cut: it goes straight onto your skill bar"));
+    const tip = () => gemTipHtml(preview, o.why ?? (onBar.has(preview.b) ? "You already have this gem" : wrong ? `Will not work with your ${wk ?? "bare hands"}: needs ${weaponReqText(def!)}` : isSup ? "Click to cut, then socket it into a skill" : "Click to cut: it goes straight onto your skill bar"));
     b.addEventListener("mouseenter", (e) => showTip("cut" + n, tip(), e.clientX, e.clientY));
     b.addEventListener("mousemove", (e) => showTip("cut" + n, tip(), e.clientX, e.clientY));
     b.addEventListener("mouseleave", () => hideTip("cut" + n));

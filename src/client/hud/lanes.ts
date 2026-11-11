@@ -70,7 +70,15 @@ function fixedRects(L: HudLayout, mapShown: boolean, bottomShown: boolean): HudR
     if (f2) out.push({ x: f2.x - 3, y: f2.y - 3, w: L.w - f2.x + 3, h: L.h });
     out.push({ x: 0, y: L.xpBar.y - 3, w: L.w, h: L.h });
   }
+  for (const r of domRects.values()) out.push(r);
   return out;
+}
+
+/** DOM HUD panels outside the canvas HUD (e.g. the Breachway bar, lanehud.ts): rects in HUD units, by id. */
+const domRects = new Map<string, HudRect>();
+export function setDomRect(id: string, r: HudRect | null): void {
+  if (r && r.w > 0 && r.h > 0) domRects.set(id, r);
+  else domRects.delete(id);
 }
 
 let fixedOpts = { map: true, bottom: true };

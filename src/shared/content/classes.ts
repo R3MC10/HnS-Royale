@@ -113,6 +113,10 @@ export interface ClassDef {
   look: number;
   tint: string;
   ascendancies: [string, string, string];
+  /** One-line playstyle shown in the hall's class showcase. */
+  playstyle: string;
+  /** How forgiving the class is for a new player: 1 straightforward, 2 moderate, 3 demanding. */
+  difficulty: 1 | 2 | 3;
 }
 
 /**
@@ -141,6 +145,8 @@ export const CLASSES: ClassDef[] = [
     look: 1,
     tint: "#6a2a1e",
     ascendancies: ["bloodsworn", "stonewarden", "pitking"],
+    playstyle: "Close-range bruiser: wade in with big axe blows and let armour soak the hits.",
+    difficulty: 1,
   },
   {
     id: "harrier",
@@ -152,6 +158,8 @@ export const CLASSES: ClassDef[] = [
     look: 2,
     tint: "#2f4a2a",
     ascendancies: ["windrunner", "huntmaster", "gallowsbow"],
+    playstyle: "Ranged skirmisher: keep moving, keep distance, rain arrows from cover.",
+    difficulty: 2,
   },
   {
     id: "gutterblade",
@@ -163,6 +171,8 @@ export const CLASSES: ClassDef[] = [
     look: 3,
     tint: "#3a3036",
     ascendancies: ["alleyknife", "ratking", "debtcollector"],
+    playstyle: "Hit-and-run duellist: fast dagger strikes, then roll out before they answer.",
+    difficulty: 3,
   },
   {
     id: "gloamcaller",
@@ -174,6 +184,8 @@ export const CLASSES: ClassDef[] = [
     look: 4,
     tint: "#2e2a52",
     ascendancies: ["hexweaver", "mothwarden", "dirgesinger"],
+    playstyle: "Caster behind a barrier: spells from a distance, energy shield instead of armour.",
+    difficulty: 2,
   },
   {
     id: "lanternwright",
@@ -185,6 +197,8 @@ export const CLASSES: ClassDef[] = [
     look: 5,
     tint: "#6a4a1a",
     ascendancies: ["pyrebinder", "beaconkeeper", "tallowsworn"],
+    playstyle: "Fire caster: burn crowds from range with wand spells; fragile up close.",
+    difficulty: 2,
   },
   {
     id: "drifter",
@@ -196,6 +210,8 @@ export const CLASSES: ClassDef[] = [
     look: 6,
     tint: "#5a4a26",
     ascendancies: ["edgewalker", "oathbreaker", "roadwarden"],
+    playstyle: "All-rounder: sword in hand, armour and evasion, fits any build you find.",
+    difficulty: 1,
   },
   {
     id: "mistrunner",
@@ -207,6 +223,8 @@ export const CLASSES: ClassDef[] = [
     look: 7,
     tint: "#3a5a5a",
     ascendancies: ["fogdancer", "marshlight", "reedpilgrim"],
+    playstyle: "Mobile hybrid: long staff reach, evasion and a little barrier; rewards good footwork.",
+    difficulty: 3,
   },
   {
     id: "bellwarden",
@@ -218,6 +236,8 @@ export const CLASSES: ClassDef[] = [
     look: 8,
     tint: "#5a5a3a",
     ascendancies: ["toller", "shrinekeeper", "ironcantor"],
+    playstyle: "Armoured battle-mage: heavy mace blows backed by armour and a barrier.",
+    difficulty: 2,
   },
 ];
 

@@ -66,6 +66,8 @@ export interface Monster {
   ext?: MonExt;
   /** Breachway lane mode: the side this unit fights for. */
   team?: 0 | 1;
+  /** Breachway spire / Core: id of the hero it is shooting at (0 = none). */
+  focus?: number;
 }
 
 export interface Camp {
@@ -713,6 +715,7 @@ export class MonsterSystem {
     }
     X.extSnap(m, s);
     if (m.team !== undefined) s.tm = m.team;
+    if (m.focus) s.fc = m.focus;
     return s;
   }
 

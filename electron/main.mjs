@@ -11,6 +11,11 @@
 //    always launch the live version. Offline / GitHub down / no release: the game starts as is.
 //  - Closing the game window stops the server.
 import { app, BrowserWindow, dialog, ipcMain, Menu } from "electron";
+
+// Run on the GPU: pick the discrete / high-performance GPU on dual-GPU laptops and rasterise 2D canvases on it.
+app.commandLine.appendSwitch("force_high_performance_gpu");
+app.commandLine.appendSwitch("enable-gpu-rasterization");
+app.commandLine.appendSwitch("enable-zero-copy");
 import updaterPkg from "electron-updater";
 import { randomBytes } from "node:crypto";
 import dgram from "node:dgram";

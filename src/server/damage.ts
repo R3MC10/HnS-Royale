@@ -337,7 +337,7 @@ export function monsterDefSnap(m: Monster): { st?: AilSnap } {
 
 // ---- the pipeline ---------------------------------------------------------------------------
 
-const EVADABLE: HitForm[] = ["melee", "proj"];
+const EVADABLE: HitForm[] = ["melee", "proj", "spell", "area"]; // dodge (evasion) works against every hit; only damage over time can't be dodged
 const BLOCKABLE: HitForm[] = ["melee", "proj", "spell"];
 const resOf = (p: ServerPlayer, t: DamageType) =>
   t === "fire" ? effectiveRes(p.stats.resFire, p.stats.maxRes)
@@ -447,7 +447,7 @@ export function hitPlayer(host: DamageHost, t: ServerPlayer, h: HitSpec): HitRes
   const st = t.stats;
   const acc = h.accuracy ?? h.by?.stats.accuracy ?? DEF.baseAccuracy;
 
-  // 1. Evasion (attacks and projectiles), per-attacker entropy.
+  // 1. Evasion / dodge (every hit: attacks, projectiles, spells, areas), per-attacker entropy.
   if (EVADABLE.includes(h.form) && st.evasion > 0) {
     const key = h.by ? `p${h.by.id}` : h.mon ? `m${h.mon.id}` : `s${h.source}`;
     let e = s.entropy.get(key);

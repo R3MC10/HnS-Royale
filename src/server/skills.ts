@@ -22,6 +22,8 @@ import {
   SUPPORT_GEM_PREFIX,
   SUPPORT_GEMS,
   SUPPORT_MAX_TIER,
+  weaponReqText,
+  STARTER_SKILL,
 } from "../shared/content/gems";
 import type { Item } from "../shared/items";
 import { blocksProjectile, forObstaclesNear } from "../shared/map";
@@ -239,21 +241,6 @@ export function rollGemDrops(source: "normal" | "elite", ilvl: number, killer?: 
   return out;
 }
 
-/** Starting skill per weapon kind (socketed on RMB at the start of every match). */
-const STARTER_SKILL: Record<string, string> = {
-  sword: "sundering_blow",
-  axe: "sundering_blow",
-  mace: "sundering_blow",
-  spear: "splinter_volley",
-  dagger: "splinter_volley",
-  claw: "sundering_blow",
-  bow: "splinter_volley",
-  crossbow: "splinter_volley",
-  staff: "cinderbolt",
-  quarterstaff: "sundering_blow",
-  wand: "cinderbolt",
-  sceptre: "cinderbolt",
-};
 
 /** Fresh match kit: empty bar plus one starter skill on RMB, full mana. */
 export function resetSkills(p: ServerPlayer) {
@@ -1259,7 +1246,7 @@ export class SkillSystem {
     if (slot === undefined) return false;
     if (this.socket(p, it.id, slot, undefined, autoPlace)) return false;
     const a = slotAction(p, slot);
-    this.host.toast(p, `${d.name} is on your skill bar (${slotLabel(slot)})${a.ok ? "" : `, but it needs ${d.weapons?.join(" / ") ?? "another weapon"}`}`);
+    this.host.toast(p, `${d.name} is on your skill bar (${slotLabel(slot)})${a.ok ? "" : `, but it needs ${weaponReqText(d) ?? "another weapon"}`}`);
     return true;
   }
 

@@ -116,4 +116,41 @@ export const MENU_CSS = `
 .m-code { font-family: var(--m-title); color: var(--m-gold); letter-spacing: 0.22em; font-weight: 700; }
 .m-input.m-code-in { width: 7.5em; text-transform: uppercase; letter-spacing: 0.25em; font-family: var(--m-title); text-align: center; }
 .m-coderow { justify-content: center; gap: 8px; } .m-coderow .m-code { font-size: 20px; }
+/* Hall (PoE2-style character select): top bar, players | class showcase | rules + talk, action bar */
+#menu-root:has(.m-hall) { padding: 12px; }
+.m-hall { width: min(1560px, 100%); min-height: 100%; display: grid; grid-template-columns: 270px minmax(0, 1fr) 300px; grid-template-rows: auto 1fr auto; gap: 12px; align-items: stretch; }
+.m-hall > .m-panel { padding: 16px 16px 14px; }
+.m-hall-top { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; padding: 10px 18px !important; }
+.m-hall-name { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+.m-hall-name .m-title { font-size: clamp(20px, 2.4vw, 28px); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.m-hall-mode { flex: none; font-family: var(--m-title); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--m-gold); padding: 2px 8px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgba(217,178,106,0.4); }
+.m-hall-top .m-coderow { margin: 0; }
+.m-hall-topbtns { justify-content: flex-end; }
+.m-hall-side { min-width: 0; min-height: 0; overflow: auto; }
+.m-hall-mid { min-width: 0; gap: 10px; }
+.m-hall-pickh { text-align: center; border-bottom: none; margin: 2px 0 -4px; padding: 0; }
+.m-members { gap: 5px; }
+.m-member canvas { flex: none; border-radius: 50%; }
+.m-member .who { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
+.m-member .who .nm { flex: none; }
+.m-member .who .cl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.m-member.rdy { background: linear-gradient(90deg, rgba(127,191,106,0.08), rgba(0,0,0,0.25) 60%); }
+.m-hall-side .m-chat { flex: 1; min-height: 160px; height: auto; }
+.m-hall-side .m-settings .m-input, .m-hall-side .m-settings .m-select { width: 100%; min-width: 0; font-size: 14px; padding: 6px 8px; }
+.m-hall-bar { grid-column: 1 / -1; display: flex; align-items: center; gap: 16px; padding: 10px 18px !important; }
+.m-hall-notes { flex: 1; min-width: 0; gap: 4px; }
+.m-hall-notes .m-status { text-align: left; min-height: 0; }
+.m-hall-act { flex: none; flex-wrap: nowrap; }
+.m-hall-go { min-width: 280px; padding: 14px 26px; font-size: 16px; }
+@media (max-height: 820px) and (min-width: 1101px) {
+  #menu-root:has(.m-hall) { padding: 8px; }
+  .m-hall { grid-template-columns: 250px minmax(0, 1fr) 250px; gap: 8px; height: calc(100vh - 16px); min-height: 0; }
+  .m-hall > .m-panel { padding: 12px 12px 10px; }
+  .m-hall-top { padding: 6px 14px !important; }
+  .m-hall-pickh { display: none; }
+  .m-hall-mid { min-height: 0; }
+  .m-hall-bar { padding: 6px 14px !important; }
+  .m-hall-go { padding: 10px 22px; min-width: 240px; }
+}
+@media (max-width: 1100px) { .m-hall { grid-template-columns: 1fr; grid-template-rows: none; } .m-hall-top { grid-template-columns: 1fr; } .m-hall-bar { flex-wrap: wrap; } .m-hall-go { min-width: 0; } }
 `;

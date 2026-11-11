@@ -92,7 +92,8 @@ const CSS = `
   background: linear-gradient(135deg, #7a6448, #3a2e22); border: 1px solid #050405; top: -8px; }
 .hm-panel::before { left: calc(50% - 7px); }
 .hm-panel::after { display: none; }
-.hm-box { width: 300px; padding: 26px 26px 22px; box-sizing: border-box; text-align: center; }
+.hm-box { width: 320px; padding: 26px 26px 22px; box-sizing: border-box; text-align: center; }
+.hm-box > .hm-title { font-size: 22px; letter-spacing: 4px; line-height: 1.25; padding-left: 4px; overflow-wrap: anywhere; }
 .hm-title { font-family: var(--o-title); font-size: 26px; font-weight: 600; letter-spacing: 6px; text-transform: uppercase; margin: 0;
   background: linear-gradient(180deg, #f6e6c4 10%, #d0a460 55%, #8a4a22 100%); -webkit-background-clip: text; background-clip: text; color: transparent;
   filter: drop-shadow(0 2px 0 rgba(0,0,0,0.9)); }
@@ -119,9 +120,13 @@ const CSS = `
 .ho-head { grid-column: 1 / 3; display: flex; align-items: center; justify-content: space-between; padding: 14px 18px 10px;
   border-bottom: 1px solid var(--o-line); background: linear-gradient(180deg, rgba(0,0,0,0.25), transparent); }
 .ho-head .hm-title { font-size: 22px; }
-.ho-x { width: 30px; height: 30px; padding: 0; font-size: 16px; line-height: 1; color: #9a8c74; cursor: pointer; border-radius: 50%;
-  border: 1px solid #050405; background: radial-gradient(circle at 50% 35%, #2a2428, #121012); box-shadow: 0 0 0 1px #4a3e3a; }
-.ho-x:hover { color: #ffe2a8; box-shadow: 0 0 0 1px #9a7a48, 0 0 10px rgba(200,140,60,0.3); }
+/* same close button as the docked panels (progstyle .pc-x) */
+.ho-x { width: 26px; height: 26px; padding: 0; font-size: 16px; line-height: 1; color: #a89474; cursor: pointer; border-radius: 3px;
+  border: 1px solid rgba(216,184,96,0.35); background: linear-gradient(180deg, #2a2220, #120e0d); box-shadow: inset 0 1px 0 rgba(255,230,190,0.07), 0 1px 2px rgba(0,0,0,0.8);
+  transition: color .1s, border-color .1s, box-shadow .1s; }
+.ho-x:hover { color: #fff0d0; border-color: #d8b36a; box-shadow: 0 0 8px rgba(216,179,106,0.35); }
+.ho-x:active { transform: scale(0.92); }
+.hm-btn:active { transform: translateY(1px); }
 .ho-tabs { display: flex; flex-direction: column; gap: 2px; padding: 14px 0; border-right: 1px solid var(--o-line);
   background: linear-gradient(90deg, rgba(0,0,0,0.25), rgba(0,0,0,0.05)); }
 .ho-tab { text-align: left; padding: 11px 16px 11px 20px; font-family: var(--o-title) !important; font-size: 13px; letter-spacing: 2.5px; text-transform: uppercase;

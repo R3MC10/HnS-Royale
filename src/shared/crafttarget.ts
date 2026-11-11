@@ -4,7 +4,7 @@
 // this only mirrors its cheap rejection rules. Unknown currency effects answer `null` ("can't tell"),
 // so new currencies added elsewhere never get wrongly dimmed. Other areas can register exact checks
 // through `craftTargetHooks`.
-import { AFFIX_BY_ID, affixAllowed } from "./content/affixes";
+import { AFFIX_BY_ID, affixAllowed, affixGroup } from "./content/affixes";
 import { BASE_BY_ID } from "./content/bases";
 import { CHARM_AFFIX_BY_ID, CHARM_BY_ID } from "./content/charms";
 import { CURRENCY_BY_ID, GEM_SOCKET_MAX } from "./content/currency";
@@ -64,7 +64,8 @@ export function craftTargetOk(cur: Item, target: Item): boolean | null {
     const a = AFFIX_BY_ID.get(ess.affix);
     // PoE2: faint / plain / potent ichors need a Magic item, primeval ones a Rare.
     if (!base || target.x || target.r !== (ess.grade === 3 ? 2 : 1)) return false;
-    return !!a && affixAllowed(a, base) && !target.m.some((m) => m.a === a.id);
+    // server: one mod per group, so an item already holding that family is refused
+    return !!a && affixAllowed(a, base) && !target.m.some((m) => { const x = AFFIX_BY_ID.get(m.a); return m.a === a.id || (!!x && affixGroup(x) === affixGroup(a)); });
   }
   const c = CURRENCY_BY_ID.get(cur.b);
   if (!c) return null;
@@ -76,13 +77,13 @@ export function craftTargetOk(cur: Item, target: Item): boolean | null {
     case "quality":
       return qualityRefusal(target, c.quality ?? "martial") === null;
     case "chance":
-      return target.r === 0 && BASE_BY_ID.has(target.b) && UNIQUES.some((u) => u.base === target.b); // server: gear only
+      return target.r === 0 && craftable(target) && UNIQUES.some((u) => u.base === target.b); // gear, flasks, charms, jewels
     case "socket": {
       const lim = socketLimit(BASE_BY_ID.get(target.b));
       return lim > 0 && (target.s?.length ?? 0) < lim;
     }
     case "corrupt":
-      return BASE_BY_ID.has(target.b) || JEWEL_BASE_BY_ID.has(target.b);
+      return BASE_BY_ID.has(target.b) || JEWEL_BASE_BY_ID.has(target.b) || isSkillGem(target);
     case "divine":
       return target.m.length > 0;
   }

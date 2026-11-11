@@ -162,6 +162,7 @@ export class UI {
       showTip: (item, x, y, compare, hint, anchor) => this.showTip(item, x, y, compare, hint, anchor),
       hideTip: () => this.hideTip(),
       toast: (t) => this.toast(t),
+      close: () => this.toggle(false),
     });
     // Alt (advanced mod view) and Ctrl (hold to compare) re-render the open tooltip.
     const mods = (e: KeyboardEvent) => {

@@ -8,6 +8,7 @@ import { isFlask, type Item } from "../../shared/items";
 import { currentBiome, currentMap, isWaterAt } from "../../shared/map";
 import type { ClientMsg, GameEvent, MonsterSnap, Phase, PlayerSnap, ServerMsg } from "../../shared/protocol";
 import { isGem } from "../../shared/skills";
+import { isStructKind } from "../../shared/lanes";
 import { ambience } from "./ambience";
 import { setListener } from "./engine";
 import { music, type MusicScene } from "./music";
@@ -361,7 +362,17 @@ export function audioEvents(events: GameEvent[], selfId: number) {
         else if (selfName && e.killer === selfName) sfx.play("kill.player");
         else sfx.play("kill.distant", { vol: 0.8 });
         break;
+      case "gold":
+        if (e.id === selfId) sfx.play("lane.gold");
+        break;
+      case "wp":
+        sfx.play("lane.waypoint", { x: e.x2, y: e.y2 });
+        break;
       case "mdie": {
+        if (isStructKind(e.mk)) {
+          sfx.play("struct.collapse", { x: e.x, y: e.y }); // Breachway: a structure falls (no monster death cry)
+          break;
+        }
         const fam = sfx.monFamily(e.mk);
         sfx.play(`mon.${fam}.death`, { x: e.x, y: e.y, vol: e.el ? 1.2 : 1 });
         heat = Math.min(1, heat + 0.05);

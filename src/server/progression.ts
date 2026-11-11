@@ -45,6 +45,8 @@ import {
 import type { Stats } from "../shared/stats";
 import type { Camp, Monster, MonsterSystem } from "./monsters";
 import type { ServerPlayer } from "./player";
+import { LANE, LANE_TRIAL_TIME } from "../shared/lanes";
+import { laneHook } from "./modes/lanehook";
 
 // ---- tunables (trial shrines) --------------------------------------------------------
 export const SHRINE_RANGE = 110; // px to activate
@@ -307,7 +309,7 @@ export function gainXp(p: ServerPlayer, amount: number) {
     gained++;
     if (pr.level === ASCEND_LEVEL && pr.ascState === 0) {
       pr.ascState = 1;
-      host?.toast(p, HINT_PREFIX + "A trial shrine calls: clear one to ascend");
+      host?.toast(p, HINT_PREFIX + (laneHook.active ? "Your trial shrine calls: it stands in the alcove north of your Ward. Clear it to ascend" : "A trial shrine calls: clear one to ascend"));
     }
     if (pr.asc && ASC_POINT_STEPS.some(([l]) => l === pr.level)) host?.toast(p, "You gained ascendancy points (P)");
   }
@@ -356,12 +358,7 @@ export function progOnMonsterKilled(m: Monster, killer: ServerPlayer) {
   const pr = prog(killer);
   gainXp(killer, monsterXp(m) * (1 + (pr.mods.xpMore ?? 0) / 100));
   onKillEffects(killer, pr);
-  if (bossIds.has(m.id)) completeTrialFor(m);
-  bossIds.delete(m.id);
-  for (const s of shrines) {
-    if (!s.trial || !s.trial.ids.delete(m.id)) continue;
-    if (s.trial.phase === 1 && s.trial.ids.size === 0) summonGuardian(s);
-  }
+  trialKill(m);
   const nova = pr.mods.killNova ?? 0;
   if (nova > 0 && host) {
     host.events.push({ k: "boom", x: Math.round(m.x), y: Math.round(m.y), r: NOVA_RADIUS });
@@ -372,6 +369,24 @@ export function progOnMonsterKilled(m: Monster, killer: ServerPlayer) {
     }
     splashPlayers(killer, m, dmg * PVP_DAMAGE_MULT, undefined, NOVA_RADIUS);
   }
+}
+
+/**
+ * Trial bookkeeping for a dead monster: an add of a running trial (the last one wakes the Warden) or the
+ * Warden itself (the trial is passed). Breachway calls this directly: its kills skip monster XP.
+ */
+export function trialKill(m: Monster) {
+  if (bossIds.has(m.id)) completeTrialFor(m);
+  bossIds.delete(m.id);
+  for (const s of shrines) {
+    if (!s.trial || !s.trial.ids.delete(m.id)) continue;
+    if (s.trial.phase === 1 && s.trial.ids.size === 0) summonGuardian(s);
+  }
+}
+
+/** Breachway: the team whose alcove a shrine stands in (west half Dawn, east half Dusk). */
+function shrineTeam(s: { x: number }): 0 | 1 {
+  return s.x < LANE.w / 2 ? 0 : 1;
 }
 
 /** Called by Game.onPlayerKilled (before the victim's progression is discarded). */
@@ -742,6 +757,7 @@ export function activateTrial(p: ServerPlayer): string | null {
   if (pr.level < ASCEND_LEVEL) return `The shrine ignores you (requires level ${ASCEND_LEVEL})`;
   if (s.s === 1) return "A trial is already under way here";
   if (s.s === 2) return "The shrine is still dormant";
+  if (laneHook.active && p.team !== shrineTeam(s)) return "This trial shrine answers only its own side";
   const camp = { id: -2, x: s.x, y: s.y, monsters: [], clearedFor: 0 } as unknown as Camp;
   const ids = new Set<number>();
   TRIAL_ADDS.forEach((tid, i) => {
@@ -749,6 +765,7 @@ export function activateTrial(p: ServerPlayer): string | null {
     if (!t) return;
     const a = (i / TRIAL_ADDS.length) * Math.PI * 2;
     const m = host!.monsters.spawnMonster(camp, t, false, spotNear(s.x + Math.cos(a) * 110, s.y + Math.sin(a) * 110, t.radius));
+    laneHook.trialSpawn?.(m); // Breachway: the guard comes at the lane level
     m.state = 1;
     m.target = p.id;
     ids.add(m.id);
@@ -773,6 +790,7 @@ function summonGuardian(s: Shrine) {
   if (!host || !s.trial) return;
   const g = MONSTER_BY_ID.get(GUARDIAN.type) ?? MONSTER_TYPES[0];
   const boss = host.monsters.spawnMonster(s.trial.camp, g, true, spotNear(s.x + 70, s.y - 40, g.radius));
+  laneHook.trialSpawn?.(boss);
   boss.hp *= GUARDIAN.hpMult;
   boss.maxHp = boss.hp;
   boss.damage *= GUARDIAN.dmgMult;
@@ -812,6 +830,7 @@ function completeTrialFor(boss: Monster) {
     if (!p.joined || !p.alive) continue;
     const pr = prog(p);
     if (pr.ascState !== 1) continue;
+    if (laneHook.active && p.team !== shrineTeam(s)) continue; // Breachway: only the shrine's own side
     if (p.id === s.trial.owner || Math.hypot(p.x - s.x, p.y - s.y) <= TRIAL_ASSIST_RANGE) winners.push(p);
   }
   for (const p of winners) {
@@ -872,8 +891,9 @@ export function progressionTick(players: ServerPlayer[]) {
       s.trial.t += DT;
       const owner = host?.players.get(s.trial.owner);
       const bossGone = s.trial.phase === 2 && !host?.monsters.monsters.has(s.trial.bossId);
-      if (!owner || !owner.alive || s.trial.t > TRIAL_TIME_LIMIT || bossGone) {
-        if (owner && owner.alive && s.trial.t > TRIAL_TIME_LIMIT) host?.toast(owner, "The trial has failed: too slow.");
+      const limit = laneHook.active ? LANE_TRIAL_TIME : TRIAL_TIME_LIMIT;
+      if (!owner || !owner.alive || s.trial.t > limit || bossGone) {
+        if (owner && owner.alive && s.trial.t > limit) host?.toast(owner, "The trial has failed: too slow.");
         failTrialsOf(owner ?? ({ id: s.trial.owner } as ServerPlayer));
         if (s.trial) {
           despawnTrial(s);

@@ -28,6 +28,7 @@ import { SLOTS, type AffixTier, type ItemBase } from "../shared/content/types";
 import { entryById } from "../shared/grid";
 import { baseName, flaskProps, type Item, type ItemMod, type Rarity } from "../shared/items";
 import { charmProps } from "../shared/lootinfo";
+import { GEM_MAX_LEVEL } from "../shared/content/gems";
 import { isSkillGem, socketCount } from "../shared/skills";
 import type { ServerPlayer } from "./player";
 import { resendBar } from "./skills";
@@ -430,7 +431,8 @@ function revert(item: Item, r: Rarity, why = "No modifier can roll on this item"
 
 /** Gambit Ember (PoE2 chance): a Normal item becomes a Unique of its base, or is destroyed. */
 function applyChance(item: Item): CraftResult {
-  if (!BASE_BY_ID.has(item.b)) return NO("Only Normal gear can be gambled");
+  // PoE2: any Normal item whose base has a Unique (gear, flasks, charms, jewels).
+  if (!uniqueBaseLevel(item.b)) return NO("That item can't be gambled");
   if (item.r !== 0) return NO("Needs a Normal item");
   const options = UNIQUES.filter((u) => u.base === item.b);
   if (!options.length) return NO("No Unique is known on this base");
@@ -446,8 +448,9 @@ function applyChance(item: Item): CraftResult {
 }
 
 function corrupt(item: Item, pool: Pool | null): CraftResult {
+  if (isSkillGem(item)) return corruptGem(item);
   const ok = BASE_BY_ID.has(item.b) || JEWEL_BASE_BY_ID.has(item.b);
-  if (!ok) return NO("Only gear and jewels can be corrupted");
+  if (!ok) return NO("Only gear, jewels and skill gems can be corrupted");
   const out = weighted(CORRUPT_OUTCOMES, (o) => o.weight)!;
   let text = out.text;
   item.x = 1;
@@ -509,6 +512,23 @@ function corrupt(item: Item, pool: Pool | null): CraftResult {
       break;
   }
   return { msg: `Corrupted. ${text}` };
+}
+
+/**
+ * Skill gem corruption (PoE2): nothing, +1 level past the normal maximum, or the quality shifts
+ * (up to 23%). The gem can't take Polish or Awls afterwards.
+ */
+function corruptGem(item: Item): CraftResult {
+  item.x = 1;
+  const roll = rnd();
+  if (roll < 0.4) return { msg: "Corrupted. The ember gutters. Nothing changes, but the gem is corrupted." };
+  if (roll < 0.7) {
+    item.l = Math.min(GEM_MAX_LEVEL + 1, Math.round(item.l || 1) + 1);
+    return { msg: `Corrupted. The gem rises to level ${item.l}.` };
+  }
+  const d = (rnd() < 0.5 ? -1 : 1) * randInt(1, 3);
+  item.q = Math.max(0, Math.min(MAX_QUALITY + 3, (item.q ?? 0) + d));
+  return { msg: `Corrupted. The gem's quality shifts to ${item.q}%.` };
 }
 
 export function applyEssence(essId: string, item: Item): CraftResult {

@@ -78,7 +78,9 @@ module.exports = {
     target: [{ target: "nsis", arch: ["x64"] }],
   },
   nsis: {
-    oneClick: true,
+    oneClick: false, // assisted installer: the player picks the install folder
+    allowToChangeInstallationDirectory: true,
+    installerLanguages: ["en_US", "pl_PL"],
     perMachine: false, // per-user install, no admin prompt
     createDesktopShortcut: true,
     createStartMenuShortcut: true,

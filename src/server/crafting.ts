@@ -30,6 +30,7 @@ import { baseName, flaskProps, type Item, type ItemMod, type Rarity } from "../s
 import { charmProps } from "../shared/lootinfo";
 import { isSkillGem, socketCount } from "../shared/skills";
 import type { ServerPlayer } from "./player";
+import { resendBar } from "./skills";
 
 // ---- rng ------------------------------------------------------------------------------
 
@@ -226,7 +227,7 @@ function rerollMod(item: Item, m: ItemMod, pool: Pool | null) {
 
 // ---- locating items ---------------------------------------------------------------------
 
-type Where = { k: "grid" } | { k: "equip" } | { k: "flask" } | { k: "charm" };
+type Where = { k: "grid" } | { k: "equip" } | { k: "flask" } | { k: "charm" } | { k: "bar"; slot: number };
 
 export function findOwned(p: ServerPlayer, id: number): { it: Item; where: Where } | null {
   const e = entryById(p.inv, id);
@@ -235,6 +236,12 @@ export function findOwned(p: ServerPlayer, id: number): { it: Item; where: Where
   for (const f of p.flasks) if (f?.id === id) return { it: f, where: { k: "flask" } };
   const charms = (p as { charms?: (Item | null)[] }).charms;
   if (charms) for (const c of charms) if (c?.id === id) return { it: c, where: { k: "charm" } };
+  // Gems already on the skill bar (skill gem, its supports, a meta gem's spell): awl / polish work in place.
+  const bar = p.sk?.bar ?? [];
+  for (let i = 0; i < bar.length; i++) {
+    const b = bar[i];
+    for (const g of [b.gem, b.inner ?? null, ...b.sups]) if (g?.id === id) return { it: g, where: { k: "bar", slot: i } };
+  }
   return null;
 }
 
@@ -276,12 +283,27 @@ export function craft(p: ServerPlayer, curId: unknown, targetId: unknown): Craft
   consumeOne(p, curId);
   if (res.destroyed) destroyOwned(p, targetId, tgt.where);
   p.invDirty = true;
+  if (tgt.where.k === "bar") {
+    // A socketed gem changed: grow its support sockets to match, then resend the bar.
+    const b = p.sk.bar[tgt.where.slot];
+    if (b) while (b.sups.length < socketCount(b.gem)) b.sups.push(null);
+    resendBar(p);
+  }
   return { ...res, equipped: tgt.where.k === "equip" };
 }
 
 /** Remove a crafting target from wherever the player carries it. */
 function destroyOwned(p: ServerPlayer, id: number, where: Where) {
   if (where.k === "grid") return void invConsumeOne(p, id);
+  if (where.k === "bar") {
+    const b = p.sk.bar[where.slot];
+    if (b) {
+      if (b.gem?.id === id) b.gem = null;
+      if (b.inner?.id === id) b.inner = null;
+      b.sups = b.sups.map((g) => (g?.id === id ? null : g));
+    }
+    return resendBar(p);
+  }
   if (where.k === "equip") {
     for (const s of SLOTS) if (p.equip[s]?.id === id) p.equip[s] = null;
     return;

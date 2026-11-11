@@ -283,7 +283,9 @@ export function drawTint(g: CanvasRenderingContext2D, s: Sprite, x: number, y: n
     tintCv.width = Math.max(tintCv.width, w);
     tintCv.height = Math.max(tintCv.height, h);
   }
-  const c = tintCv.getContext("2d")!;
+  // GPU canvas (gfx/softcanvas.ts): the 3D hero frames tinted here live on the GPU, a software canvas made every
+  // hit flash a synchronous GPU readback.
+  const c = tintCv.getContext("2d", { willReadFrequently: false })!;
   c.clearRect(0, 0, w, h);
   c.globalCompositeOperation = "source-over";
   c.drawImage(s.cv, 0, 0);

@@ -47,7 +47,7 @@ export function hexRGB(hex: string): RGB {
 
 export class LightMap {
   readonly cv = document.createElement("canvas");
-  private g = this.cv.getContext("2d")!;
+  private g = this.cv.getContext("2d", { willReadFrequently: false })!; // GPU, like the world pass it is multiplied onto (gfx/softcanvas.ts)
   private vig: HTMLCanvasElement | null = null;
   private w = 1;
   private h = 1;

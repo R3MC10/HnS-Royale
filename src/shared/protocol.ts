@@ -172,7 +172,7 @@ export type ClientMsg =
   | { t: "jewel"; node?: string; id?: number } // socket grid jewel `id` into tree socket `node` (no id: take it out; no node: first free socket)
   | { t: "input"; cmds: InputCmd[] }
   | { t: "ping"; c: number }
-  | { t: "pickup"; g: number; equip?: boolean } // ground item; equip = equip directly
+  | { t: "pickup"; g: number; equip?: boolean; ae?: boolean } // ground item; equip = equip directly
   // Inventory (see shared/grid.ts). Items are addressed by item id.
   | { t: "equip"; id: number; to?: EquipTarget } // grid item (or an equipped one, to move slots) into a slot
   | { t: "unequip"; from: EquipTarget; x?: number; y?: number } // to the grid: at (x, y), else first fit

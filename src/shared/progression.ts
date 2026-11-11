@@ -144,13 +144,14 @@ export function applyProgression(s: Stats, m: PassiveMods, level: number, c: Pro
   s.lifeRegen = g("noRegen") ? 0 : s.lifeRegen + g("regen");
 
   // Offence
-  let dmgMult = inc(g("dmgInc") + g("str") * ATTR_RULES.strDmg) * more(g("dmgMore"));
-  if (c.lowLife) dmgMult *= more(g("lowLifeDmg"));
-  if (c.postRoll) dmgMult *= more(g("postRollDmg"));
-  if (c.calm) dmgMult *= more(g("calmDmg"));
-  if (c.barrierFull) dmgMult *= more(g("fullBarrierDmg"));
-  if (c.trophies > 0) dmgMult *= 1 + (Math.min(5, c.trophies) * g("trophyDmg")) / 100;
-  s.attackDamage *= dmgMult;
+  // Conditional "more" multipliers apply to attacks and spells alike.
+  let cond = more(g("dmgMore"));
+  if (c.lowLife) cond *= more(g("lowLifeDmg"));
+  if (c.postRoll) cond *= more(g("postRollDmg"));
+  if (c.calm) cond *= more(g("calmDmg"));
+  if (c.barrierFull) cond *= more(g("fullBarrierDmg"));
+  if (c.trophies > 0) cond *= 1 + (Math.min(5, c.trophies) * g("trophyDmg")) / 100;
+  s.attackDamage *= inc(g("dmgInc") + g("str") * ATTR_RULES.strDmg) * cond;
   let aspd = g("atkSpeed") + g("dex") * ATTR_RULES.dexAtkSpeed;
   if (c.killRush) aspd += g("killRushAtk");
   if (c.still) aspd += g("stillAtk");
@@ -177,7 +178,7 @@ export function applyProgression(s: Stats, m: PassiveMods, level: number, c: Pro
   if (typeof r.manaRegen === "number") r.manaRegen *= inc(g("manaRegenInc"));
   if (typeof r.castSpeed === "number") r.castSpeed *= inc(g("castSpeed"));
   if (typeof r.spirit === "number") r.spirit += spiritForLevel(level) + g("spirit"); // level milestones + passives
-  if (typeof r.spellMult === "number") r.spellMult *= inc(g("spellInc")) * more(g("dmgMore"));
+  if (typeof r.spellMult === "number") r.spellMult *= inc(g("spellInc")) * cond;
 
   // Defences (combat-systems, server/damage.ts): passive flat values join gear, passive % applies to both.
   // Barrier == energy shield (one pool, owned by damage.ts). Passive "resist" adds to every element.

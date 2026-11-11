@@ -131,7 +131,7 @@ function requestPickup(g: number, equip: boolean) {
   const e = ground.find((x) => x[0] === g);
   if (!me || !e || Math.hypot(e[1] - me.x, e[2] - me.y) <= PICKUP_RANGE) {
     pendingPickup = null;
-    net.send({ t: "pickup", g, equip });
+    net.send({ t: "pickup", g, equip, ...(getSettings().game.autoEquip ? { ae: true } : {}) });
   } else pendingPickup = { g, equip, t: performance.now() };
 }
 
@@ -149,7 +149,7 @@ function pendingPickupStep(moving: boolean): { x: number; y: number } | null {
   const dy = e[2] - me.y;
   const d = Math.hypot(dx, dy);
   if (d <= PICKUP_RANGE - 8) {
-    net.send({ t: "pickup", g: pp.g, equip: pp.equip });
+    net.send({ t: "pickup", g: pp.g, equip: pp.equip, ...(getSettings().game.autoEquip ? { ae: true } : {}) });
     pendingPickup = null;
     return null;
   }
@@ -425,8 +425,8 @@ function bufferedDodge(now: number): boolean {
  * flash and the number), so a blow reads as contact. Simulation, prediction and networking keep running.
  * Follows Options > Graphics > Screen shake. Never more than one hold per HIT_STOP_GAP_MS.
  */
-const HIT_STOP_MS = { hit: 26, heavy: 52, kill: 46, bigKill: 72 };
-const HIT_STOP_GAP_MS = 200;
+const HIT_STOP_MS = { hit: 0, heavy: 0, kill: 0, bigKill: 45 }; // camera: freezing the picture on every hit read as camera lag; only rare / unique kills hold now
+const HIT_STOP_GAP_MS = 1500;
 let hitStopPending = 0;
 let hitStopUntil = 0;
 function hitStopEvents(events: SnapMsg["events"]) {
@@ -451,7 +451,11 @@ function inputStep() {
   let { mx, my } = screenMoveToWorld(keys.mx, keys.my);
   const walk = pendingPickupStep(keys.mx !== 0 || keys.my !== 0); // worldui: walk to a clicked label
   if (walk) ({ x: mx, y: my } = walk);
-  const angle = renderer.aimAngle(input.mouseX, input.mouseY, predictor.cur.x, predictor.cur.y);
+  // Aim at the hovered enemy itself (its body is drawn above its feet), else the ground under the cursor.
+  const hp = renderer.hoverAimPoint();
+  const angle = hp && Math.hypot(hp.x - predictor.cur.x, hp.y - predictor.cur.y) > 8
+    ? Math.atan2(hp.y - predictor.cur.y, hp.x - predictor.cur.x)
+    : renderer.aimAngle(input.mouseX, input.mouseY, predictor.cur.x, predictor.cur.y);
   // game feel: taps are buffered (a press during a swing / cast / roll fires when the hero is free) and the newest tap wins over held slots
   const nowMs = performance.now();
   const buf = bufferedSkills(nowMs, predictor.cur.atkCd <= 0 && predictor.cur.rollT <= 0);
@@ -502,7 +506,7 @@ function simStep(now: number): number {
     autoPickupTick(performance.now(), selfPos(), ground, (g) => {
       const it = defs.get(g);
       return it ? itemCategory(it) : null;
-    }, PICKUP_RANGE, (g) => net.send({ t: "pickup", g, equip: false }));
+    }, PICKUP_RANGE, (g) => net.send({ t: "pickup", g, equip: false, ...(getSettings().game.autoEquip ? { ae: true } : {}) }));
   }
   predictor.decay(dt);
   return dt;

@@ -370,6 +370,7 @@ export function progOnMonsterKilled(m: Monster, killer: ServerPlayer) {
       if (o === m || !o.alive || Math.hypot(o.x - m.x, o.y - m.y) > NOVA_RADIUS + o.radius) continue;
       hurtMonster(o, dmg, m.x, m.y, 250, killer);
     }
+    splashPlayers(killer, m, dmg * PVP_DAMAGE_MULT, undefined, NOVA_RADIUS);
   }
 }
 
@@ -383,6 +384,16 @@ export function progOnPlayerKilled(victim: ServerPlayer, killer: ServerPlayer | 
   gainXp(killer, playerKillXp(vpr?.level ?? 1) * (1 + (pr.mods.bountyXp ?? 0) / 100));
   onKillEffects(killer, pr);
   if (pr.mods.bountyFlask) host?.addCharges(killer, 999);
+  const nova = pr.mods.killNova ?? 0;
+  if (nova > 0 && host) {
+    host.events.push({ k: "boom", x: Math.round(victim.x), y: Math.round(victim.y), r: NOVA_RADIUS });
+    const dmg = (victim.stats.maxHp * nova) / 100;
+    for (const o of [...host.monsters.monsters.values()]) {
+      if (!o.alive || Math.hypot(o.x - victim.x, o.y - victim.y) > NOVA_RADIUS + o.radius) continue;
+      hurtMonster(o, dmg, victim.x, victim.y, 250, killer);
+    }
+    splashPlayers(killer, victim, dmg * PVP_DAMAGE_MULT, victim, NOVA_RADIUS);
+  }
   pr.condKey = ""; // trophies changed
 }
 
@@ -573,8 +584,16 @@ export function progAfterHit(attacker: ServerPlayer, dealt: number, target: HitT
     const mx = barMax(attacker, pr);
     if (mx > 0) restoreBar(attacker, pr, (dealt * m.barrierLeech) / 100 / mx);
   }
-  if (!("m" in target) || !host) return;
+  if (!host) return;
+  if (!("m" in target)) {
+    // PvP: culling at 60% of the monster threshold; splash reaches other players near the target.
+    const t = target.p;
+    if (m.execute && t.alive && t.hp > 0 && t.hp <= (t.stats.maxHp * m.execute * PVP_CULL) / 100) dealPlayer(t, t.stats.maxHp * 2, attacker, `${attacker.name}'s cull`);
+    if (m.splash) splashPlayers(attacker, t, (dealt * m.splash) / 100);
+    return;
+  }
   const t = target.m;
+  if (m.splash) splashPlayers(attacker, t, (dealt * m.splash * PVP_DAMAGE_MULT) / 100);
   if (m.execute && t.alive && t.hp > 0 && t.hp <= (t.maxHp * m.execute) / 100 && !bossIds.has(t.id)) hurtMonster(t, t.hp + 1, attacker.x, attacker.y, 0, attacker);
   if (m.splash) {
     const d = (dealt * m.splash) / 100;
@@ -582,6 +601,18 @@ export function progAfterHit(attacker: ServerPlayer, dealt: number, target: HitT
       if (o === t || !o.alive || Math.hypot(o.x - t.x, o.y - t.y) > SPLASH_RADIUS + o.radius) continue;
       hurtMonster(o, d, t.x, t.y, 0, attacker);
     }
+  }
+}
+
+/** Execute thresholds count this much against players. */
+const PVP_CULL = 0.6;
+
+/** Splash / burst damage to players (other than the attacker and `skip`) near a point. */
+function splashPlayers(attacker: ServerPlayer, at: { x: number; y: number }, dmg: number, skip?: ServerPlayer, radius = SPLASH_RADIUS) {
+  if (!host || dmg <= 0) return;
+  for (const o of host.players.values()) {
+    if (o === attacker || o === skip || o === at || !o.alive || !o.joined || Math.hypot(o.x - at.x, o.y - at.y) > radius + PLAYER_RADIUS) continue;
+    dealPlayer(o, dmg, attacker, `${attacker.name}'s splash`);
   }
 }
 

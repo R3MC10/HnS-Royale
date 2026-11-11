@@ -470,7 +470,13 @@ function tip(id: string, x: number, y: number) {
     showTip(`<b style="color:${col}">${esc(jw.n)}</b><i>Socketed jewel</i>${ml}<div class="hint">Right-click to take it out</div>`, x, y);
     return;
   }
-  const fl = (n.desc ?? []).map((d) => `<div class="fl">${esc(d)}</div>`).join("");
+  let fl = (n.desc ?? []).map((d) => `<div class="fl">${esc(d)}</div>`).join("");
+  if ((n.kind === "start" || n.kind === "ascStart") && alloc.has(id) && alloc.size > 1) {
+    // your class start / ascendancy root sums up everything allocated so far
+    const sum: Record<string, number> = {};
+    for (const a of alloc) for (const [k, v] of Object.entries(nodes.get(a)?.mods ?? {})) sum[k] = Math.round(((sum[k] ?? 0) + (v as number)) * 10) / 10;
+    fl += `<div class="hint">${esc(`Total from ${alloc.size} allocated nodes`)}</div>` + modLines(sum).map((l) => `<div class="ln">${esc(l)}</div>`).join("");
+  }
   let hint = "";
   if (alloc.has(id)) hint = "Allocated";
   else if (n.kind === "start") hint = n.cls ? `Start of the ${CLASS_BY_ID.get(n.cls)?.name ?? n.cls}` : "";
@@ -675,13 +681,15 @@ function updateHits(nodes: Map<string, DrawNode>) {
   hits = new Set<string>();
   if (query) {
     for (const n of nodes.values()) {
-      let text = n.name;
+      // match both the English source and the shown (translated) text, so a Polish query finds nodes too
+      const parts = [n.name];
       try {
-        text += " " + modLines(n.mods).join(" ");
+        parts.push(...modLines(n.mods));
       } catch {
         /* nodes without mods */
       }
-      if (n.desc) text += " " + n.desc.join(" ");
+      if (n.desc) parts.push(...n.desc);
+      const text = parts.map((x) => `${x} ${tr(x)}`).join(" ");
       if (text.toLowerCase().includes(query)) hits.add(n.id);
     }
   }

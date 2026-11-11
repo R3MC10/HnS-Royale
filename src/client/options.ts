@@ -598,6 +598,7 @@ const ROWS: Record<Group, RowDef[]> = {
       html: () => RARITY_NAMES.map((n, i) => `<span style="color:${RARITY_COLORS[i]};margin-left:12px"><span class="ho-sw" style="background:${RARITY_COLORS[i]}"></span>${n}</span>`).join(""),
     },
     { k: "sec", text: "Match" },
+    { k: "tog", g: "game", key: "autoEquip", label: "Auto-equip into empty slots", desc: "Picked-up gear you can use goes straight into an empty slot." },
     { k: "tog", g: "game", key: "confirmLeave", label: "Confirm before leaving the match" },
   ],
   graphics: [

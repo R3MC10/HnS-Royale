@@ -24,6 +24,11 @@ let shopOpen = false;
 let lastPanelKey = "";
 
 export const isLaneMode = () => currentMap().params.mode === "lanes";
+/** Is that structure standing (latest lane HUD message)? True when unknown. */
+export function laneStructUp(k: string, tm: 0 | 1): boolean {
+  const e = st?.st.find((q) => q[0] === k && q[1] === tm);
+  return !e || e[2] > 0;
+}
 
 const css = `
 #lane-bar{position:fixed;right:8px;top:218px;z-index:30;pointer-events:none;font:12px/1.35 Georgia,serif;color:#e8dcc0;

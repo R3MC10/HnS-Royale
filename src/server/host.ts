@@ -4,6 +4,7 @@
 // no node:* imports, no process / Buffer / ws here.
 //
 // ADD NEW client->server message cases in `handle()` and per-tick outbound messages in `tick()`.
+import { pinRandom } from "./devpin";
 import { MAX_NAME_LEN } from "../shared/constants";
 import type { InputCmd, ServerMsg } from "../shared/protocol";
 import { Game } from "./game";
@@ -68,6 +69,8 @@ export interface GameHostOptions {
   dev?: boolean;
   /** Reuse an existing Game (default: a new one). */
   game?: Game;
+  /** Dev only: pin the map seed and Math.random to this seed (server/devpin.ts; HNS_PIN). */
+  pin?: number;
 }
 
 export class GameHost {
@@ -79,6 +82,7 @@ export class GameHost {
   private mapSent = new WeakMap<HostConn, number>();
 
   constructor(opts: GameHostOptions = {}) {
+    if (opts.dev && opts.pin !== undefined && Number.isFinite(opts.pin)) pinRandom(opts.pin); // before the Game, so its first map is pinned too
     this.game = opts.game ?? new Game();
     this.dev = !!opts.dev;
     if (this.dev) this.game.minPlayers = 1; // dev solo testing: a round starts with one player
@@ -174,7 +178,7 @@ export class GameHost {
           break;
         }
         case "pickup":
-          if (p.joined) game.pickup(p, msg.g, msg.equip === true);
+          if (p.joined) game.pickup(p, msg.g, msg.equip === true, msg.ae === true);
           break;
         case "equip":
           if (p.joined && p.alive) this.report(p, equipItem(p, msg.id, msg.to, drop));

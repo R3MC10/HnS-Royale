@@ -62,13 +62,13 @@ const N = {
   coreRange: 650,
   boltEvery: 1.2,
   boltSpeed: 700,
-  boltMob: 0.35,
+  boltMob: 0.3,
   boltElite: 0.15,
   boltExile: 0.1,
   /** The Core hits lane units softer than the spires (a wave must be able to reach it). */
   coreMobMult: 0.6,
-  mobStructMult: 3,
-  eliteStructMult: 5,
+  mobStructMult: 4,
+  eliteStructMult: 7,
   fortifyUntil: 240,
   backdoorR: 600,
   wardRespawn: 120,
@@ -76,16 +76,19 @@ const N = {
   goldStart: 150,
   goldPassive: 2,
   goldPassiveFrom: 20,
-  xpPassive: 0.5,
+  xpPassive: 0.6,
   purseR: 1200,
   killGold: 120,
   exileGold: 100,
+  exileLife: 2.5,
   structGold: { lane_outer: 80, lane_inner: 120, lane_ward: 160, lane_core: 0 } as Record<StructKind, number>,
-  structLife: { lane_outer: 5400, lane_inner: 7200, lane_ward: 5000, lane_core: 9000 } /* doc x0.6: the sim ran 30+ min */ as Record<StructKind, number>,
+  structLife: { lane_outer: 4500, lane_inner: 7200, lane_ward: 5000, lane_core: 9000 } /* doc x0.6: the sim ran 30+ min */ as Record<StructKind, number>,
   pvpMult: 0.6,
 };
 
 const waveEvery = (t: number) => (t >= 900 ? 15 : t >= 600 ? 20 : 25);
+/** Late siege: every hit on a structure grows from 12:00 so a match ends in about 15-20 minutes. */
+const siegeMult = (t: number) => (t >= 1200 ? 2 : t >= 900 ? 1.5 : t >= 720 ? 1.25 : 1);
 
 export class LaneMode {
   /** Fight seconds. */
@@ -171,6 +174,11 @@ export class LaneMode {
     this.structs[team].set(k, u);
   }
 
+  private meanLevel(): number {
+    const ps = this.g.joined;
+    return ps.length ? ps.reduce((s, p) => s + playerLevel(p), 0) / ps.length : 1;
+  }
+
   /** Lane level: floor of the mean player level, at least 1. */
   laneLevel(): number {
     const ps = this.g.joined;
@@ -207,18 +215,23 @@ export class LaneMode {
     const ranged = 1 + Math.floor(n / 3);
     const lvl = this.laneLevel();
     const purseGold = Math.min(80, 36 + 3 * min);
-    const purseXp = Math.min(90, 18 + 4.5 * min);
+    const purseXp = Math.min(110, 22 + 5.5 * min);
     const eliteWave = this.wave >= 3 && this.wave % 3 === 0;
     for (const team of [0, 1] as Team[]) {
+      // Momentum: every enemy structure this team has broken adds a rusher, and from the second one
+      // every wave is led by an elite, so a lead turns into a push and the match ends.
+      const broken = STRUCT_KINDS.filter((k) => !this.structs[(1 - team) as Team].get(k)).length;
+      const myRushers = rushers + broken;
       const list: { t: MonsterType; r: 0 | 1 | 2 }[] = [];
-      for (let i = 0; i < rushers; i++) list.push({ t: rushT, r: 0 });
+      for (let i = 0; i < myRushers; i++) list.push({ t: rushT, r: 0 });
       for (let i = 0; i < ranged; i++) list.push({ t: rangedT, r: 0 });
+      if (!eliteWave && broken >= 2) list[0].r = 1;
       if (eliteWave) {
         if (min < 6) list[0].r = 1;
-        else if (min < 12) list[Math.random() < 0.5 ? 0 : rushers].r = 2;
+        else if (min < 12) list[Math.random() < 0.5 ? 0 : myRushers].r = 2;
         else {
           list[0].r = 2;
-          list[rushers].r = 2;
+          list[myRushers].r = 2;
         }
       }
       const weight = list.reduce((s, e) => s + (e.r === 2 ? 5 : e.r === 1 ? 3 : 1), 0);
@@ -250,6 +263,8 @@ export class LaneMode {
     const x = front ? front.m.x + (team === 0 ? 120 : -120) : LANE.mobX[team];
     const m = this.g.monsters.spawnLoose(t, { x, y: LANE.y + 60 }, false, 3);
     this.setLevel(m, Math.min(LANE_LEVEL_CAP + 2, this.laneLevel() + 2));
+    m.maxHp *= N.exileLife; // a five-hero defence used to melt one in seconds
+    m.hp = m.maxHp;
     const u = this.newUnit(m, team, "exile");
     u.laneY = LANE.y + 60;
     m.state = 1;
@@ -272,6 +287,7 @@ export class LaneMode {
     if (u.kind === "struct") {
       if (!this.targetable(u)) return 0;
       if (u.sk === "lane_outer" && this.t < N.fortifyUntil) dmg *= 0.5;
+      dmg *= siegeMult(this.t);
       // Backdoor: no attacking mob of the hitter's side near the structure.
       if (by) {
         let mobNear = false;
@@ -310,6 +326,7 @@ export class LaneMode {
       if (!this.targetable(target)) return;
       if (from) dmg *= from.kind === "mob" ? N.mobStructMult : N.eliteStructMult;
       if (target.sk === "lane_outer" && this.t < N.fortifyUntil) dmg *= 0.5;
+      if (from) dmg *= siegeMult(this.t);
       target.hitT = this.t;
     }
     if (m.ext && (m.ext.invulnT > 0 || (m.ext.exile && m.ext.exile.rollT > 0))) return;
@@ -373,6 +390,9 @@ export class LaneMode {
   }
 
   private addXp(p: ServerPlayer, n: number) {
+    // Catch-up (doc 9): +15% per level below the match mean, up to +60%.
+    const behind = this.meanLevel() - playerLevel(p);
+    if (behind > 0) n *= 1 + Math.min(0.6, 0.15 * behind);
     const acc = (this.xpAcc.get(p.id) ?? 0) + n;
     const whole = Math.floor(acc);
     this.xpAcc.set(p.id, acc - whole);
@@ -509,9 +529,20 @@ export class LaneMode {
         bp = p;
       }
     }
-    if (u.kind === "exile" && bp) {
-      m.target = bp.id;
-      return;
+    if (u.kind === "exile") {
+      // Exiles are siege champions: they duel a hero who comes close, else break the structure in reach.
+      if (bp && bpd < 300) {
+        m.target = bp.id;
+        return;
+      }
+      if (bestS) {
+        u.tu = bestS;
+        return;
+      }
+      if (bp) {
+        m.target = bp.id;
+        return;
+      }
     }
     if (best) u.tu = best;
     else if (bestS) u.tu = bestS;

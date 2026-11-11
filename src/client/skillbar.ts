@@ -1,3 +1,4 @@
+import { applyCurrencyTo, applyingCurrency } from "./inventory";
 // Client side of skills: the 16-slot skill bar HUD (one row of 8; holding Ctrl shows the second 8 in place), the Skills panel (K) for socketing
 // and cutting gems, gem tooltips, and which slot the held keys use. The server (server/skills.ts)
 // owns the truth; this only mirrors the `bar` / `skcd` messages and sends socket / unsocket / cut.
@@ -716,6 +717,7 @@ function cell(cls: string, it: Item | null, size: number, opts: { tip?: () => st
   }
   el.addEventListener("click", (e) => {
     e.preventDefault();
+    if (it && applyingCurrency()) return applyCurrencyTo(it.id, e.shiftKey); // Awl / Polish onto a gem already on the bar
     opts.click?.();
   });
   el.addEventListener("contextmenu", (e) => {

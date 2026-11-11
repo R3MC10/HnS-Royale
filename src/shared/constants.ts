@@ -23,7 +23,7 @@ export const SWING_MOVE_MULT = 0.3; // slowed while attacking (weapons override)
 export const DODGE_SPEED = 560;
 export const DODGE_TIME = 0.32; // s
 export const DODGE_IFRAMES = 0.24; // s
-export const DODGE_COOLDOWN = 1.1; // s
+export const DODGE_COOLDOWN = 2.2; // s (was 1.1: players rolled too often to be caught)
 
 // Unarmed defaults; the equipped weapon base overrides these (content/bases.ts).
 export const ATTACK_COOLDOWN = 0.55; // s between swings (= full attack time)

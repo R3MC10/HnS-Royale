@@ -32,7 +32,7 @@ const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 const angTo = (ax: number, ay: number, bx: number, by: number) => Math.atan2(by - ay, bx - ax);
 
 /** A bot decides once every this many host ticks (10 Hz); in between it repeats its last input. */
-const THINK_EVERY = 3;
+const THINK_EVERY = 4; // was 3: ~133 ms reaction instead of 100 ms (easier bots)
 const THINK_DT = THINK_EVERY / TICK_RATE;
 /** A per-tick (30 Hz) probability, rolled once per decision instead. */
 const chance = (perTick: number) => Math.random() < 1 - Math.pow(1 - Math.min(1, perTick), THINK_EVERY);
@@ -84,6 +84,17 @@ const WEAK_HP = 0.3;
 /** Monster projectiles fly 240 - 480 px/s: the bot sidesteps one that would pass this close within PROJ_DODGE_SECS. */
 const PROJ_DODGE_PAD = 34;
 const PROJ_DODGE_SECS = 0.8;
+// ---- difficulty (casual players should win most 1v1s against a single bot) ----
+/** Share of decisions a bot in a player fight actually presses attack (hesitation; monsters get full uptime). */
+const PVP_ATTACK_UPTIME = 0.7;
+/** Fraction of a moving player's velocity a ranged bot leads by (was a full lead). */
+const PVP_LEAD = 0.45;
+/** Aim wobble (radians) against players for the clumsiest bot; scaled down by its skill. */
+const PVP_AIM_ERR = 0.22;
+/** Target selection: score penalty per extra player already standing on a target (soft anti dog-pile). */
+const CROWD_PENALTY = 160;
+/** Score bonus for whoever has been hitting this bot (fight back, whoever it is). */
+const REVENGE_BONUS = 260;
 type Goal = { kind: "camp" | "explore" | "center" | "loot" | "flee" | "hunt"; x: number; y: number; g?: number; until: number };
 
 class Brain {
@@ -118,7 +129,9 @@ class Brain {
   flaskSlots = 1;
   // personality
   aggro = rnd(0.35, 1);
-  skill = rnd(0.4, 1); // dodge / kiting competence
+  skill = rnd(0.2, 0.8); // dodge / kiting / aim competence (was 0.4 - 1)
+  /** Per-bot taste in targets: a fixed random offset per target id so bots do not all agree on the same one. */
+  whim = Math.floor(Math.random() * 1e6);
   greed = rnd(0.4, 1);
   // memory
   spawnPicked = false;
@@ -138,7 +151,8 @@ class Brain {
   dodgeCd = 0;
   flaskAt = 0;
   skillHold = 0;
-  skillCd = rnd(1, 3);
+  skillCd = rnd(1.5, 3.5);
+  aimErr = 0;
   allocAt = 0;
   target: { m?: number; p?: number } | null = null;
   targetAt = 0;
@@ -342,7 +356,7 @@ class Brain {
   tryFlask(me: PlayerSnap, now: number) {
     if (!this.inv || now - this.flaskAt < 2600) return;
     const frac = me.hp / Math.max(1, me.maxHp);
-    if (frac > 0.55) return;
+    if (frac > 0.45) return; // was 0.55: quaffs a little late
     for (let i = 0; i < this.flaskSlots; i++) {
       const f = this.inv.flasks[i];
       if (!f) continue;
@@ -478,7 +492,7 @@ class Brain {
           .filter((d) => d && d.kind !== "meta" && (!d.weapons || d.weapons.includes(this.wk)));
         if (opts.length && tryKey(`cut${it.id}`)) {
           // damage skills first, highest tier
-          opts.sort((a, b) => (b.dmg > 0 ? 10 : 0) + b.tier - ((a.dmg > 0 ? 10 : 0) + a.tier) + (Math.random() - 0.5));
+          opts.sort((a, b) => (b.dmg > 0 ? 10 : 0) + b.tier - ((a.dmg > 0 ? 10 : 0) + a.tier) + (Math.random() - 0.5) * 6); // noisier: not always the best cut
           this.gemAt = now;
           return this.send({ t: "cut", id: it.id, gem: opts[0].id });
         }
@@ -613,7 +627,7 @@ class Brain {
       if (tc <= 0 || tc > soonest) continue;
       const cross = (vx * ry - vy * rx) / Math.sqrt(v2); // signed distance of the bot from its line
       if (Math.abs(cross) > p.r + PROJ_DODGE_PAD) continue;
-      if ((p.id * 7 + this.idx * 13) % 100 >= 45 + this.skill * 50) continue; // not every shot is read in time
+      if ((p.id * 7 + this.idx * 13) % 100 >= 25 + this.skill * 40) continue; // not every shot is read in time
       soonest = tc;
       out = Math.atan2(vy, vx) + (cross >= 0 ? Math.PI / 2 : -Math.PI / 2);
     }
@@ -665,7 +679,7 @@ class Brain {
         if (along < -30 || along > (h.len ?? h.r) + 40 || Math.abs(across) > (h.w ?? 40) / 2 + 34) continue;
         escape = h.a + (across >= 0 ? Math.PI / 2 : -Math.PI / 2);
         pooled = false;
-        if (h.f > 0.55 && this.dodgeCd <= 0 && chance(0.25 + this.skill * 0.6)) dodge = true;
+        if (h.f > 0.55 && this.dodgeCd <= 0 && chance(0.15 + this.skill * 0.4)) dodge = true;
         continue;
       }
       const reach = h.r + 26;
@@ -673,7 +687,7 @@ class Brain {
       if (d < reach) {
         pooled = escape === null && h.sh === "pool";
         escape = angTo(h.x, h.y, me.x, me.y);
-        if (h.f > 0.55 && this.dodgeCd <= 0 && chance(0.25 + this.skill * 0.6)) dodge = true;
+        if (h.f > 0.55 && this.dodgeCd <= 0 && chance(0.15 + this.skill * 0.4)) dodge = true;
       }
     }
     // ---- danger: a monster's shot coming at us -> step off its line
@@ -684,8 +698,8 @@ class Brain {
     }
     this.urgent = escape !== null && !pooled;
 
-    // ---- pick a target (re-evaluated 4x a second; sticky)
-    if (now - this.targetAt > 250) {
+    // ---- pick a target (re-evaluated ~2.5x a second; sticky)
+    if (now - this.targetAt > 400) {
       this.targetAt = now;
       this.target = this.pickTarget(me, hpFrac, late);
     }
@@ -787,14 +801,17 @@ class Brain {
         } else if (!tpv || tpv.id !== tp.id) this.tpv = { id: tp.id, x: tp.x, y: tp.y, at: nowMs, vx: 0, vy: 0 };
         const v = this.tpv!;
         if (this.ranged && d > 90) {
-          const lt = Math.min(0.8, d / 620);
+          const lt = Math.min(0.8, d / 620) * PVP_LEAD;
           aim = angTo(me.x, me.y, tp.x + v.vx * lt, tp.y + v.vy * lt);
         }
+        // Imperfect aim against players: a wobble that drifts between decisions (less for skilled bots).
+        this.aimErr = this.aimErr * 0.6 + rnd(-1, 1) * PVP_AIM_ERR * (1.2 - this.skill) * 0.4;
+        aim += this.aimErr;
       }
       const reach = me.atkRange + tr - 2;
       // Incoming melee: monster winding up next to us / player mid-swing in reach -> roll sideways.
-      if (tm && tm.s === 2 && d < tm.r + 120 && tm.w > 0.35 && this.dodgeCd <= 0 && chance(0.05 + this.skill * 0.12)) dodge = true;
-      if (tp && tp.atkT > 0 && d < (tp.atkRange ?? 60) + 40 && this.dodgeCd <= 0 && chance(0.03 + this.skill * 0.08)) dodge = true;
+      if (tm && tm.s === 2 && d < tm.r + 120 && tm.w > 0.35 && this.dodgeCd <= 0 && chance(0.03 + this.skill * 0.08)) dodge = true;
+      if (tp && tp.atkT > 0 && d < (tp.atkRange ?? 60) + 40 && this.dodgeCd <= 0 && chance(0.015 + this.skill * 0.04)) dodge = true;
       // Skill: hold the RMB slot briefly every few seconds when in its range and mana allows.
       let sk: number | undefined;
       if (this.skillHold > 0) {
@@ -806,7 +823,7 @@ class Brain {
           const def = skillDefOf(this.bar[slot]?.gem) ?? innateFor(this.wk);
           this.skSlot = slot;
           this.skillHold = Math.ceil((def?.ramp ? 54 : 8) / THINK_EVERY); // ramping skills are held so they speed up
-          this.skillCd = rnd(0.9, 2.6);
+          this.skillCd = tp ? rnd(1.6, 3.6) : rnd(0.9, 2.6); // slower skill rotation against players
           this.slotReady[slot] = now + ((def?.cd ?? 0) + 0.4) * 1000;
           sk = slot;
         } else this.skillCd = 0.3;
@@ -828,9 +845,10 @@ class Brain {
         mvA = aim + (Math.PI / 2) * this.strafe;
         mv = 0.35;
       }
-      const inRange = this.ranged ? d < 560 : d <= reach + 6;
+      // Against a player the bot hesitates now and then (lower attack uptime: humans get openings).
+      const inRange = (this.ranged ? d < 560 : d <= reach + 6) && (!tp || Math.random() < PVP_ATTACK_UPTIME);
       if (dodge) {
-        this.dodgeCd = rnd(1.4, 3);
+        this.dodgeCd = rnd(2, 4);
         mvA = (escape ?? aim) + (Math.PI / 2) * this.strafe;
         mv = 1;
       }
@@ -937,6 +955,19 @@ class Brain {
     return this.players.some((p) => p.id !== me.id && p.alive && hyp(p.x - x, p.y - y) < r);
   }
 
+  /** This bot's fixed liking for a target id: -70 .. +70 score (so two bots weigh the same field differently). */
+  taste(id: number): number {
+    const h = Math.imul(id ^ this.whim, 2654435761) >>> 0;
+    return ((h % 1000) / 1000 - 0.5) * 140;
+  }
+
+  /** Extra players (beyond the first) already standing on `t` besides this bot: 0 for a 1v1, 1+ for a pile-up. */
+  crowdOn(me: PlayerSnap, t: { id?: number; x: number; y: number }): number {
+    let n = 0;
+    for (const o of this.players) if (o.id !== me.id && o.id !== t.id && o.alive && hyp(o.x - t.x, o.y - t.y) < 280) n++;
+    return Math.max(0, n - 1);
+  }
+
   pickTarget(me: PlayerSnap, hpFrac: number, late: boolean): { m?: number; p?: number } | null {
     if (this.lane) return this.lanePickTarget(me, hpFrac);
     const myPow = this.power(me);
@@ -966,7 +997,13 @@ class Brain {
       const weak = p.hp / Math.max(1, p.maxHp) < 0.35;
       const engage = late || weak || ratio > 1.25 - this.aggro * 0.4 || (d < 160 && this.hurtT > 0) || (this.fightSecs > 200 && ratio > 0.8);
       if (!engage || (hpFrac < 0.35 && !late && !weak)) continue;
-      const sc = -d + ratio * 120 + (weak ? 200 : 0);
+      // Independent picks: every player (human or bot, the bot cannot tell) is scored only by this bot's own
+      // situation. The old score (-d + ratio * 120 + 200 when weak) let every bot agree on the same lowest-level,
+      // most hurt player (usually the human, who levels slower than farming bots), so they all converged on it.
+      // Now: who is hitting me first, a capped strength ratio, a per-bot taste per target, and a soft penalty
+      // when other players are already on that target.
+      const revenge = this.struckBy(p.id, 1) ? REVENGE_BONUS : 0;
+      const sc = -d + Math.min(ratio, 2) * 60 + (weak ? 90 : 0) + revenge + this.taste(p.id) - this.crowdOn(me, p) * CROWD_PENALTY;
       if (sc > bpScore) {
         bpScore = sc;
         bestP = p;
@@ -975,8 +1012,13 @@ class Brain {
     // Current player target is sticky.
     if (this.target?.p !== undefined) {
       const cur = this.players.find((p) => p.id === this.target!.p && p.alive);
-      if (cur && !((inReach(cur) || inReach(me)) && hyp(cur.x - me.x, cur.y - me.y) > 200) && hyp(cur.x - me.x, cur.y - me.y) < (late ? 1150 : 800) && (late || !((this.ignoreP.get(cur.id) ?? 0) > Date.now()))) return this.target;
+      const piled = !!cur && !this.last && this.crowdOn(me, cur) >= 2 && !this.struckBy(cur.id, 1); // three or more already on it: let them have it
+      if (cur && !piled && !((inReach(cur) || inReach(me)) && hyp(cur.x - me.x, cur.y - me.y) > 200) && hyp(cur.x - me.x, cur.y - me.y) < (late ? 1150 : 800) && (late || !((this.ignoreP.get(cur.id) ?? 0) > Date.now()))) return this.target;
     }
+    // A monster already on the bot comes before a player who is not hitting it (players and monsters are equal
+    // threats; bots used to turn their back on a pack to run at whichever player was in view).
+    const mobOnMe = !this.last && this.monsters.some((m) => m.hp > 0 && (m.s === 1 || m.s === 2) && !(m.rr === 3 && !m.lk && !ready) && hyp(m.x - me.x, m.y - me.y) < 170);
+    if (bestP && mobOnMe && !this.struckBy(bestP.id, 1)) bestP = null;
     if (bestP) {
       return { p: bestP.id };
     }
@@ -1000,7 +1042,7 @@ class Brain {
       if (truce && !(chasing && d < 200) && this.crowded(me, m.x, m.y, 300)) continue; // opening truce: no fighting over a monster (stray hits start duels)
       const lim = chasing ? 520 : late ? 260 : 340 + this.aggro * 160;
       if (d > lim) continue;
-      const sc = d - (chasing ? 200 : 0) + (m.hp / Math.max(1, m.mhp)) * 40;
+      const sc = d - (chasing ? 200 : 0) + (m.hp / Math.max(1, m.mhp)) * 40 - this.taste(m.id) * 0.5 + (chasing ? 0 : this.crowdOn(me, m) * 80);
       if (sc < bm) {
         bm = sc;
         bestM = m;
@@ -1070,7 +1112,7 @@ class Brain {
     if (bestP) return { p: bestP.id };
     // Siege: the enemy structure first while our wave is at it and nothing is hitting the bot.
     const siege = this.laneFoeStruct();
-    if (siege && hyp(siege.x - me.x, siege.y - me.y) < 480 && this.hurtT <= 0 && this.laneAllies().some((a) => hyp(a.x - siege.x, a.y - siege.y) < 600)) return { m: siege.id };
+    if (siege && hyp(siege.x - me.x, siege.y - me.y) < 560 && (this.hurtT <= 0 || hpFrac > 0.6) && this.laneAllies().some((a) => hyp(a.x - siege.x, a.y - siege.y) < 600)) return { m: siege.id };
     // Mobs and exiles near the bot.
     let bestM: MonsterSnap | null = null;
     let bm = 1e9;

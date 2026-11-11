@@ -198,15 +198,21 @@ const DEEP_TREES: V[] = [
 ];
 /** Deep inside a rocky wall. */
 const DEEP_ROCKS: V[] = [["boulder", 1.3, 3], ["boulder_b", 1.3], ["boulder_c", 1.3], ["boulder_d", 1.3], ["rock_b", 1.2], ["rock_c", 1.2]];
-/** Rim cells that carry no tree: a low bush / fern / rock line marks where walkable ground ends. */
+/**
+ * Rim cells that carry no tree: small conifers and boulders mark where walkable ground ends. Loop21: only props
+ * that never appear as walkable-ground scatter (ferns, rock piles and dead bushes do, so a fern rim read as open
+ * ground you could walk into); these are the same trees / boulders the blocking obstacles use, a size down.
+ */
 const RIM_FILL: V[] = [
-  // (bush_b..d read as dark thorn balls and fern_e has a clipped square edge at this size: left out)
-  ["fern", 1.3, 4], ["fern_f", 1, 2], ["fern_b", 0.85], ["fern_c", 0.85], ["fern_d", 0.85], ["rocks", 1.15, 2], ["rocks_d", 1.1],
-  ["conifer_small", 1, 2], ["conifer_small_c", 0.9], ["conifer_small_d", 0.9], ["bush_dead", 0.9, 0.7],
+  // (conifer_small_b..d are pale bare-rooted saplings that read as a gap in the wall: left out)
+  ["conifer_small", 1.1, 4], ["conifer_medium", 0.9, 2.5], ["boulder_b", 0.8, 1.5], ["boulder_c", 0.8, 1.2], ["boulder_d", 0.8, 1.2],
 ];
-/** Painted dressing for a blocked spot: `deep` = well inside the wall, else a tree-less rim cell. */
-export function wallDressProp(x: number, y: number, deep: boolean, rock: boolean): PropPick | null {
-  const p = pick(deep ? (rock ? DEEP_ROCKS : DEEP_TREES) : RIM_FILL, h(x, y, 11));
+/** Layer 2 (one cell behind the rim, loop21): mid-size trees, so tall deep trees do not hide you at the edge. */
+const MID_TREES: V[] = [["conifer_medium", 1, 3], ["conifer_medium_b", 1.1], ["conifer_small", 1.25, 2]];
+const MID_ROCKS: V[] = [["boulder", 1.05, 2], ["boulder_b", 1.05], ["boulder_c", 1.05]];
+/** Painted dressing for a blocked spot: `deep` = inside the wall (`mid` = only one cell in), else a tree-less rim cell. */
+export function wallDressProp(x: number, y: number, deep: boolean, rock: boolean, mid = false): PropPick | null {
+  const p = pick(deep ? (mid ? (rock ? MID_ROCKS : MID_TREES) : rock ? DEEP_ROCKS : DEEP_TREES) : RIM_FILL, h(x, y, 11));
   return p ? { id: p.id, scale: ART_PX * p.m * (0.85 + h(x, y, 12) * 0.3), flip: h(x, y, 13) < 0.5 } : null;
 }
 

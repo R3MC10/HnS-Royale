@@ -7,7 +7,7 @@ const pts = (n: string) => plural(n, "punkt", "punkty", "punktów");
 export const PL: Dict = {
   // ---- title / main menu ----
   "Full loot. Last one standing.": "Pełny łup. Zostaje tylko jeden.", "Click to begin": "Kliknij, aby zacząć", "Your name": "Twoje imię", Name: "Imię",
-  "Play · Browse games": "Graj · Przeglądaj gry", "Host a game": "Załóż grę", Options: "Opcje", "Quit to title": "Wyjdź do ekranu tytułowego",
+  "Play · Browse games": "Graj · Przeglądaj gry", "Host a game": "Załóż grę", Options: "Opcje", "Quit to title": "Wyjdź do ekranu tytułowego", "Quit game": "Wyjdź z gry",
   "Dev: join this page's dedicated server": "Dev: dołącz do serwera dedykowanego tej strony", "Connecting to the dedicated server…": "Łączenie z serwerem dedykowanym…",
   "Gather. Gear up. Be the last.": "Zbierz się. Uzbrój. Zostań ostatni.", "Choose a name first.": "Najpierw wybierz imię.",
   "Your tab is in the background: you are hosting, keep this tab visible for a smooth game.": "Twoja karta jest w tle: jesteś hostem, trzymaj ją na widoku, żeby gra działała płynnie.",
@@ -57,7 +57,7 @@ export const PL: Dict = {
   Language: "Język", "Auto follows your system language.": "Auto dopasowuje się do języka systemu.", Loot: "Łup",
   "Auto-pickup flasks and currency": "Automatycznie podnoś flakony i walutę", "Picked up as you walk over them. The server still checks the range.": "Podnoszone, gdy po nich przejdziesz. Serwer i tak sprawdza zasięg.",
   Accessibility: "Dostępność", "Colourblind-friendly palette": "Paleta dla osób z zaburzeniami widzenia barw", "Rarity colours and the better / worse colours in tooltips.": "Kolory rzadkości oraz kolory „lepiej / gorzej” w podpowiedziach.",
-  "Rarity preview": "Podgląd rzadkości", Match: "Mecz", "Confirm before leaving the match": "Pytaj przed opuszczeniem meczu",
+  "Rarity preview": "Podgląd rzadkości", Match: "Mecz", "Confirm before leaving the match": "Pytaj przed opuszczeniem meczu", "Auto-equip into empty slots": "Automatycznie zakładaj do pustych miejsc", "Picked-up gear you can use goes straight into an empty slot.": "Podniesiony sprzęt, którego możesz użyć, trafia od razu do pustego miejsca.",
   Display: "Obraz", "Render scale": "Skala renderowania", "Resolution of the game world. Auto caps it on very dense (4K / retina) screens.": "Rozdzielczość świata gry. Auto ogranicza ją na bardzo gęstych ekranach (4K / retina).",
   Brightness: "Jasność", "How much the dark lets through outside your light.": "Ile widać w ciemności poza twoim światłem.", "Frame rate cap": "Limit klatek",
   "Max follows your display's refresh rate.": "Maks. dopasowuje się do odświeżania ekranu.", Max: "Maks.", Effects: "Efekty", "Light quality": "Jakość światła",
@@ -208,7 +208,7 @@ export const PL: Dict = {
   "This choice is final for the match. You receive 2 ascendancy points now and 2 more at levels 16, 22 and 28.": "Ten wybór jest ostateczny do końca meczu. Dostajesz teraz 2 punkty wyniesienia i po 2 kolejne na poziomach 16, 22 i 28.",
   "Click again to ascend (final)": "Kliknij ponownie, aby dostąpić wyniesienia (ostatecznie)", "Your ascendancies: {x}": "Twoje wyniesienia: {x}", "Class Mark": "Znak klasy", Passive: "Pasyw",
   Notable: "Znaczący", Keystone: "Zwornik", "Socketed jewel": "Osadzony klejnot", Allocated: "Przydzielone", "Start of the {x}": "Początek klasy: {x}", "Not reachable": "Nieosiągalne",
-  "Needs {n} points (you have {m})": (n, m) => `Wymaga ${n} ${pts(n)} (masz ${m})`, "Click to allocate": "Kliknij, aby przydzielić",
+  "Needs {n} points (you have {m})": (n, m) => `Wymaga ${n} ${pts(n)} (masz ${m})`, "Click to allocate": "Kliknij, aby przydzielić", "Total from {n} allocated nodes": "Suma z przydzielonych węzłów ({n})",
   "Click to allocate ({n} points along the path)": "Kliknij, aby przydzielić (punktów na ścieżce: {n})",
   "Reach <b>level {n}</b> (you are level {m}), then wake a trial shrine (blue markers on the map) and survive it with your honour intact.":
     "Osiągnij <b>poziom {n}</b> (masz poziom {m}), a potem obudź kapliczkę próby (niebieskie znaczniki na mapie) i przetrwaj próbę, nie tracąc honoru.",

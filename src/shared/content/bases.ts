@@ -31,9 +31,9 @@ const tpl = (base: Omit<WeaponProps, "damage">): W => (damage, extra = {}) => ({
 // ---- weapon templates (per class) --------------------------------------------------------------
 // One-handed melee
 const sword = tpl({ kind: "sword", range: 62, arcDeg: 110, cooldown: 0.66, swingTime: 0.66, knockback: 480, swingMoveMult: 0.3, crit: 5 });
-const axe = tpl({ kind: "axe", range: 64, arcDeg: 100, cooldown: 1.05, swingTime: 1.05, knockback: 720, swingMoveMult: 0.2, crit: 5 });
-const mace = tpl({ kind: "mace", range: 58, arcDeg: 90, cooldown: 1.0, swingTime: 1.0, knockback: 820, swingMoveMult: 0.22, crit: 5 });
-const dagger = tpl({ kind: "dagger", range: 42, arcDeg: 75, cooldown: 0.44, swingTime: 0.44, knockback: 240, swingMoveMult: 0.45, crit: 7 });
+const axe = tpl({ kind: "axe", range: 64, arcDeg: 100, cooldown: 1.05, swingTime: 1.05, knockback: 440, swingMoveMult: 0.2, crit: 5 });
+const mace = tpl({ kind: "mace", range: 60, arcDeg: 90, cooldown: 1.0, swingTime: 1.0, knockback: 500, swingMoveMult: 0.22, crit: 5 });
+const dagger = tpl({ kind: "dagger", range: 52, arcDeg: 75, cooldown: 0.44, swingTime: 0.44, knockback: 240, swingMoveMult: 0.45, crit: 7 });
 const claw = tpl({ kind: "claw", range: 40, arcDeg: 85, cooldown: 0.4, swingTime: 0.4, knockback: 200, swingMoveMult: 0.5, crit: 6.5 });
 const spear = tpl({ kind: "spear", range: 105, arcDeg: 40, cooldown: 0.74, swingTime: 0.74, knockback: 400, swingMoveMult: 0.3, crit: 5 });
 const sceptre = tpl({ kind: "sceptre", range: 56, arcDeg: 90, cooldown: 0.9, swingTime: 0.9, knockback: 600, swingMoveMult: 0.28, crit: 5 });
@@ -41,12 +41,12 @@ const sceptre = tpl({ kind: "sceptre", range: 56, arcDeg: 90, cooldown: 0.9, swi
 const wand = tpl({ kind: "wand", range: 340, arcDeg: 16, cooldown: 0.62, swingTime: 0.5, knockback: 160, swingMoveMult: 0.55, ranged: true, crit: 7 });
 // Two-handed melee
 const greatsword = tpl({ kind: "sword", range: 78, arcDeg: 140, cooldown: 0.95, swingTime: 0.95, knockback: 640, swingMoveMult: 0.22, twoHand: true, crit: 5 });
-const greataxe = tpl({ kind: "axe", range: 76, arcDeg: 120, cooldown: 1.3, swingTime: 1.3, knockback: 900, swingMoveMult: 0.15, twoHand: true, crit: 5 });
-const maul = tpl({ kind: "mace", range: 72, arcDeg: 110, cooldown: 1.35, swingTime: 1.35, knockback: 1050, swingMoveMult: 0.15, twoHand: true, crit: 5 });
-const quarterstaff = tpl({ kind: "quarterstaff", range: 92, arcDeg: 150, cooldown: 0.72, swingTime: 0.72, knockback: 520, swingMoveMult: 0.35, twoHand: true, crit: 10 });
-const staff = tpl({ kind: "staff", range: 80, arcDeg: 110, cooldown: 0.95, swingTime: 0.95, knockback: 500, swingMoveMult: 0.3, twoHand: true, crit: 7 });
+const greataxe = tpl({ kind: "axe", range: 76, arcDeg: 120, cooldown: 1.3, swingTime: 1.3, knockback: 560, swingMoveMult: 0.15, twoHand: true, crit: 5 });
+const maul = tpl({ kind: "mace", range: 72, arcDeg: 110, cooldown: 1.35, swingTime: 1.35, knockback: 640, swingMoveMult: 0.15, twoHand: true, crit: 5 });
+const quarterstaff = tpl({ kind: "quarterstaff", range: 86, arcDeg: 150, cooldown: 0.72, swingTime: 0.72, knockback: 520, swingMoveMult: 0.35, twoHand: true, crit: 10 });
+const staff = tpl({ kind: "staff", range: 88, arcDeg: 110, cooldown: 0.95, swingTime: 0.95, knockback: 500, swingMoveMult: 0.3, twoHand: true, crit: 7 });
 // Two-handed ranged
-const bow = tpl({ kind: "bow", range: 420, arcDeg: 14, cooldown: 0.7, swingTime: 0.55, knockback: 220, swingMoveMult: 0.5, ranged: true, twoHand: true, crit: 5 });
+const bow = tpl({ kind: "bow", range: 420, arcDeg: 14, cooldown: 0.78, swingTime: 0.6, knockback: 220, swingMoveMult: 0.42, ranged: true, twoHand: true, crit: 5 });
 const crossbow = tpl({ kind: "crossbow", range: 380, arcDeg: 10, cooldown: 1.15, swingTime: 0.8, knockback: 420, swingMoveMult: 0.35, ranged: true, twoHand: true, crit: 5, reload: 0.8 });
 
 type Req = NonNullable<ItemBase["req"]>;
@@ -82,12 +82,21 @@ const WEAPON_SPREAD: Record<string, number> = {
 };
 const physRange = (dmg: number, spread: number): [number, number] => [Math.max(1, Math.round(dmg * (1 - spread))), Math.round(dmg * (1 + spread))];
 
+/**
+ * Duel-tuned damage per weapon class (headless 1v1 sims, docs/BALANCE.md): heavy and short weapons
+ * hit harder to pay for closing the gap; bows / quarterstaves / wands, which already win on reach, a bit less.
+ */
+const DMG_TUNE: Record<string, number> = {
+  dagger: 1.75, staff: 2, mace: 1.6, maul: 1.45, axe: 1.2, greataxe: 1.15, sword: 1.1, greatsword: 1.05, bow: 0.75, wand: 1, quarterstaff: 1.15,
+};
+
 function weapons(group: string, w: W, look: string, size: [number, number], rows: WRow[]): ItemBase[] {
-  return rows.map(([id, name, ilvl, dmg, imp, extra], i) => ({
+  const tune = DMG_TUNE[group] ?? 1;
+  return rows.map(([id, name, ilvl, dmg0, imp, extra], i) => { const dmg = Math.round(dmg0 * tune * 10) / 10; return {
     id, name, cls: "weapon" as const, reqIlvl: ilvl, weight: weightFor(i),
     weapon: { phys: physRange(dmg, WEAPON_SPREAD[group] ?? 0.25), ...w(dmg, extra) },
     look, size, req: reqFor(ilvl, WEAPON_ATTR[group]), ...(imp ? { implicit: imp } : {}),
-  }));
+  }; });
 }
 
 // ---- armour ---------------------------------------------------------------------------------

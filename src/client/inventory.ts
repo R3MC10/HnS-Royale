@@ -483,6 +483,16 @@ interface Drag {
   srcEl: HTMLElement;
 }
 
+/** Currency being applied (right-clicked in the bag), so other panels (skill gems) can take the click. */
+let activeInv: InventoryView | null = null;
+export function applyingCurrency(): Item | null {
+  return activeInv?.applyingItem() ?? null;
+}
+/** Apply the held currency to an item shown outside the bag (e.g. a gem on the skill bar). */
+export function applyCurrencyTo(targetId: number, keep: boolean): void {
+  activeInv?.applyTo(targetId, keep);
+}
+
 export class InventoryView {
   private st: InvState | null = null;
   private gridEl: HTMLDivElement | null = null;
@@ -496,7 +506,20 @@ export class InventoryView {
   private pendingHold: { id: number; until: number } | null = null;
   private mouse = { x: 0, y: 0 };
 
+  applyingItem(): Item | null {
+    return this.applying;
+  }
+
+  applyTo(targetId: number, keep: boolean) {
+    const cur = this.applying;
+    if (!cur || cur.id === targetId) return;
+    this.h.send({ t: "useCurrency", id: cur.id, on: targetId });
+    playSfx("inv.place");
+    if (!keep || stackSize(cur) <= 1) this.stopApply();
+  }
+
   constructor(private root: HTMLDivElement, private h: InvHooks) {
+    activeInv = this; // eslint-disable-line @typescript-eslint/no-this-alias
     injectCss();
     root.classList.add("invp");
     // menus package: hovering a linked item in chat shows this tooltip; Esc cancels modes before panels.

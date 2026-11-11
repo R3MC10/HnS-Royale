@@ -8,14 +8,21 @@
 //   window.hnsCine.off()   back to the normal camera, HUD shown
 import { setHudHidden } from "./hud/dock";
 
-export const CINE = (() => {
+//   ?dev=1&cam=<x>,<y>[,<zoom>]  pinned camera: the view stays on that world point (HUD shown), for honest
+//                                before/after captures together with the server's pinned seed (HNS_PIN).
+const Q = (() => {
   try {
-    const q = new URLSearchParams(location.search);
-    return q.get("dev") === "1" && q.get("cine") === "1";
+    return new URLSearchParams(location.search);
   } catch {
-    return false;
+    return null;
   }
 })();
+const PIN_CAM = (() => {
+  const v = Q?.get("dev") === "1" ? Q.get("cam")?.split(",").map(Number) : undefined;
+  return v && v.length >= 2 && v.every(Number.isFinite) ? v : null;
+})();
+
+export const CINE = !!Q && Q.get("dev") === "1" && (Q.get("cine") === "1" || !!PIN_CAM);
 
 interface Pose {
   dx?: number;
@@ -31,10 +38,10 @@ interface Shot {
   hud?: boolean;
 }
 
-let shot: Shot | null = null;
+let shot: Shot | null = PIN_CAM ? { ax: PIN_CAM[0], ay: PIN_CAM[1], to: { zoom: PIN_CAM[2] ?? 1 }, hud: true } : null;
 let t0 = 0;
 
-if (CINE) {
+if (CINE && Q?.get("cine") === "1") {
   (window as unknown as { hnsCine: unknown }).hnsCine = {
     shot(s: Shot) {
       shot = s;

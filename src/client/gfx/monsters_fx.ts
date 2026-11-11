@@ -167,9 +167,15 @@ export interface MonLabelOpts {
   hud?: PlateRect[];
   /** When given, the text is queued here and drawn after every monster's bar (a later bar no longer covers a name). */
   defer?: (() => void)[];
+  /** Your own overhead plate (name + life bar): a non-focused monster bar over it is drawn faint (loop21). */
+  self?: PlateRect;
 }
-/** A plate pushed further up than this (HUD units) by a crowd is dropped; the monster keeps its bar. */
-const MAX_PUSH = 22;
+/**
+ * A plate pushed further up than this (HUD units) by a crowd is dropped; the monster keeps its bar. Loop21: was 22
+ * (up to 3 names stacked into a column with leader lines in melee); now only a nudge clear of a bar, so a crowd
+ * shows one name per spot and the rest keep their bars (hover or hit one for its name in the top bar).
+ */
+const MAX_PUSH = 4;
 
 const NAME_SIZE = 5;
 const MOD_SIZE = 4.1;
@@ -193,7 +199,17 @@ export function drawMonLabel(fx: MonFx, m: MonsterSnap, damaged: boolean, top: n
   const col = rr ? RARITY_INFO[rr].color : "#e8e2d4";
   const bw = boss ? Math.max(60, fx.up(m.r * 2)) : Math.max(16, fx.up(m.r * 1.3));
   const hasBar = damaged || rr >= 2 || focus;
-  if (hasBar) fx.bar(x - Math.floor(bw / 2), y, bw, m.hp / m.mhp, rr === 3 ? "#d8873a" : rr === 2 ? "#e8a03a" : "#c8402e");
+  if (hasBar) {
+    // loop21: in melee, monster bars piled onto your own name and life bar; non-focused ones over it go faint
+    const sp = o?.self;
+    const over = !focus && !boss && !!sp && sp.x < x + bw / 2 && x - bw / 2 < sp.x + sp.w && sp.y < y + 4 && y - 1 < sp.y + sp.h;
+    if (over) {
+      g.save();
+      g.globalAlpha *= 0.3;
+    }
+    fx.bar(x - Math.floor(bw / 2), y, bw, m.hp / m.mhp, rr === 3 ? "#d8873a" : rr === 2 ? "#e8a03a" : "#c8402e");
+    if (over) g.restore();
+  }
   if (o?.bare) {
     // Declutter: the bar only (name and mods are in the top target / boss bar, or crowded out).
     if (hasBar) o.plates.push({ x: x - bw / 2 - 1, y: y - 1.5, w: bw + 2, h: 5 });

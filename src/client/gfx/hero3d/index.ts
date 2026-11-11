@@ -505,10 +505,10 @@ export function hero3dFrame(id: string, look: Look, lookCode: string, angle: num
   renderer.render(scene, camera);
   it.root.visible = false;
   // copy + dark outline (8 offsets of the silhouette) + hit flash
-  const tg = it.tmp.getContext("2d")!;
+  const tg = it.tmp.getContext("2d", GPU2D)!;
   tg.clearRect(0, 0, W, H);
   tg.drawImage(renderer.domElement, 0, 0);
-  const g = it.out.getContext("2d")!;
+  const g = it.out.getContext("2d", GPU2D)!;
   g.clearRect(0, 0, W, H);
   const o = Math.max(1, D * 0.45);
   for (let k = 0; k < 8; k++) {
@@ -523,7 +523,7 @@ export function hero3dFrame(id: string, look: Look, lookCode: string, angle: num
   // rim light: a thin edge on the upper-left of the silhouette (the part of the body that the same
   // body shifted down-right does not cover), so the hero separates from dark ground. Yours is pale
   // blue-white, other players' is a warm red: friend / foe reads without the name plate.
-  const rg = rimCanvas().getContext("2d")!;
+  const rg = rimCanvas().getContext("2d", GPU2D)!;
   rg.globalCompositeOperation = "source-over";
   rg.clearRect(0, 0, W, H);
   rg.drawImage(it.tmp, 0, 0);
@@ -549,6 +549,9 @@ export function hero3dFrame(id: string, look: Look, lookCode: string, angle: num
   return it.sprite;
 }
 
+/** The WebGL frame is copied into these and they are drawn into the GPU world pass: kept on the GPU (gfx/softcanvas.ts),
+ * a software canvas here made every hero redraw a synchronous GPU readback. */
+const GPU2D: CanvasRenderingContext2DSettings = { willReadFrequently: false };
 /** dev: hero redraws and the ms they took (pose + WebGL render + 2D outline / rim passes) */
 const perf = { n: 0, ms: 0 };
 const RIM_PX = Math.max(1, D * 0.4);

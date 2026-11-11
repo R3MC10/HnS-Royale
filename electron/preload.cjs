@@ -8,3 +8,6 @@ contextBridge.exposeInMainWorld("HNS_LAN", {
   hubStart: () => ipcRenderer.invoke("lan:hub-start"),
   hubStop: () => ipcRenderer.invoke("lan:hub-stop"),
 });
+
+// Desktop app: real quit from the main menu (src/client/menus/menus.ts).
+contextBridge.exposeInMainWorld("HNS_APP", { quit: () => ipcRenderer.send("app:quit") });

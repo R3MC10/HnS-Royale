@@ -37,6 +37,9 @@ export const PL_CONTENT: Dict = {
   "Candle Litany": "Litania Świec", Reserves: "Rezerwy", "Gathered Dusk": "Zebrany Zmierzch", "Drifting Haze": "Dryfujące Opary", "Hunter's Cadence": "Rytm Łowcy",
   Draughts: "Napitki", "Sellsword's Habit": "Nawyk Najemnika", "Heavy Hands": "Ciężkie Ręce", "Tempered Faith": "Hartowana Wiara", Veilwright: "Tkacz Zasłon",
   Spellcraft: "Sztuka Zaklęć", "Ember Lexicon": "Leksykon Żaru", Agility: "Zwinność", "Tidal Footing": "Krok Przypływu", "Long Shadow": "Długi Cień",
+  // tree rework (class wings)
+  "Dusk Litany": "Litania Zmierzchu", "Kindled Glass": "Rozpalone Szkło", "Reed Forms": "Formy Trzciny", "Fletcher's Rhythm": "Rytm Łucznika",
+  "Quick Knives": "Szybkie Noże", "Sellblade's Edge": "Ostrze Najemnika", "Pit Fury": "Furia Areny", "Ringing Blows": "Dzwoniące Ciosy", "Pit Purse": "Sakiewka z Areny",
   "Shadow Footwork": "Praca Nóg w Cieniu", Sweep: "Zamach", "Hip Flask": "Piersiówka", "Tempered Hide": "Hartowana Skóra", "Bronze Lungs": "Spiżowe Płuca",
   Balance: "Równowaga", "Hollow Vessel": "Puste Naczynie", "Phantom Step": "Widmowy Krok", "Carrion Feast": "Uczta Padliny", "Bloodfury Oath": "Przysięga Krwawej Furii",
   Stoneheart: "Kamienne Serce", "Ashen Covenant": "Popielne Przymierze", "Jewel Socket": "Gniazdo klejnotu",

@@ -54,6 +54,8 @@ export interface ServerPlayer extends PhysState {
   knownGround: Set<number>; // ground ids whose details this client already has
   /** Pending attack hit: lands when atkT falls to this value (commit point); -1 = none. See combat.ts stepAttack. */
   hitAt: number;
+  /** Latest cursor aim from input (radians); ranged shots fire along this at release, not the angle locked at swing start. */
+  aim?: number;
   /** Skills: mana, bar, cooldowns, statuses (server/skills.ts). */
   sk: SkillState;
 }

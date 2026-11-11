@@ -1,4 +1,5 @@
 // Authoritative game state: players, monsters, ground loot, round phases. No networking here.
+import { repinRandom } from "./devpin";
 import {
   CHARGES_ELITE_KILL,
   CHARGES_NORMAL_KILL,
@@ -33,7 +34,7 @@ import { damagePlayer, stepAttack, type CombatHost } from "./combat";
 import { damageTick, FINAL_DUEL_PVP_MULT, finalDuel, playerLocked, removeDefence, resetDefence, setActiveBlock, setDamageRefresh, type DamageMeta } from "./damage";
 import { wireDefenceProgression } from "./defprog";
 import { isGem } from "../shared/skills";
-import { autoPlace, equipDirect, giveStarterKit, refreshStats, storeItem, stripAll } from "./inventory";
+import { autoPlace, canAutoEquip, equipDirect, giveStarterKit, refreshStats, storeItem, stripAll } from "./inventory";
 import { bindLootHost, devLoot, lootMonsterKilled, lootPlayerKilled, lootTick } from "./lootsys";
 import { lootDrinkFlask } from "./uniques";
 import { monsterDropContext, rollDrops, rollFlask, rollItem } from "./loot";
@@ -183,7 +184,8 @@ export class Game implements CombatHost {
     // Prototype: one biome only (HNS_BIOME overrides, default hollowpine). No rotation.
     const b = biome ?? envBiome ?? PROTOTYPE_BIOME;
     this.mapCount++;
-    this.mapParams = { seed: seed ?? (Math.random() * 0x7fffffff) | 0, players: Math.max(MIN_PLAYERS_FOR_ROUND, players), biome: b, ...(mode ? { mode } : {}) };
+    const pinned = repinRandom(); // dev pin (server/devpin.ts): null unless pinned
+    this.mapParams = { seed: seed ?? pinned ?? (Math.random() * 0x7fffffff) | 0, players: Math.max(MIN_PLAYERS_FOR_ROUND, players), biome: b, ...(mode ? { mode } : {}) };
     setMap(this.mapParams);
     this.mapVersion++;
   }
@@ -319,12 +321,13 @@ export class Game implements CombatHost {
   }
 
   /** Pick up (or equip directly) a ground item. All checks are server-side. */
-  pickup(p: ServerPlayer, g: unknown, equip: boolean) {
+  pickup(p: ServerPlayer, g: unknown, equip: boolean, autoEquip = false) {
     if (typeof g !== "number" || !p.alive) return;
     const gi = this.ground.get(g);
     if (!gi) return this.toast(p, "Already taken");
     if (Math.hypot(gi.x - p.x, gi.y - p.y) > PICKUP_RANGE) return this.toast(p, "Too far away");
     const gem = isGem(gi.item); // gems are never "equipped": they go to the bag, cut skill gems onto the bar
+    if (autoEquip && !equip && !gem && canAutoEquip(p, gi.item)) equip = true; // option: empty slot it fits
     const err = equip && !gem ? equipDirect(p, gi.item, this.dropFn) : storeItem(p, gi.item);
     if (err) return this.toast(p, err);
     this.ground.delete(g);
@@ -575,6 +578,7 @@ export class Game implements CombatHost {
           if (BASE_BY_ID.get(p.equip.offhand?.b ?? "")?.sub !== "shield") delete cmd.blk;
           else delete cmd.sk;
         }
+        if (Number.isFinite(cmd.angle)) p.aim = cmd.angle;
         const swung = stepPlayer(p, cmd, this.isFrozen(p), p.stats);
         if (cmd.blk && p.alive && !this.isFrozen(p) && p.rollT <= 0) setActiveBlock(p, p.angle, 0.2); // refreshed every held tick
         stepAttack(this, p, swung, p.alive && this.combatEnabled(), players);

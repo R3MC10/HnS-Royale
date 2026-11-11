@@ -4,7 +4,8 @@
 import { DODGE_TIME, MAP_H, MAP_W, MAX_FLASK_SLOTS, MIN_PLAYERS_FOR_ROUND, PICKUP_RANGE, PLAYER_RADIUS, ATTACK_COMMIT } from "../shared/constants";
 import { RARITY_COLORS } from "../shared/content/loot";
 import { ELITE_MOD_BY_ID, MONSTER_BY_ID } from "../shared/content/monsters";
-import { isStructKind, TEAM_COLORS } from "../shared/lanes";
+import { isStructKind, STRUCT_KINDS, TEAM_COLORS } from "../shared/lanes";
+import { laneStructUp } from "./lanehud";
 import { flaskProps, type Item } from "../shared/items";
 import { decodeLook, NAKED_LOOK } from "../shared/look";
 import { currentMap, getPois, onMapChange, OBSTACLES, WALL, WATER } from "../shared/map";
@@ -192,12 +193,14 @@ const FEED_TIME = 6;
 const FLASH_TIME = 0.1;
 const OWN_HIT_SHAKE = 1.1; // camera nudge (px at the peak, gone in ~60 ms) when one of your hits lands
 const OWN_HIT_SHAKE_HEAVY = 2.2; // crit, or a hit for a quarter of the target's life
+/** Per-frame time for building ground chunks (ms; render.drawGround). The first build a frame always runs. */
+const GROUND_BUDGET_MS = 4;
 const DROP_HOP_TIME = 0.34; // s a fresh drop takes to hop out and land
 const DROP_HOP_H = 13; // peak height of the hop (screen px)
 const GROUND_PRESEEN_S = 0.6; // s after the first frame on a map in which ground items count as already there (no hop)
 const DROP_GLINT_TIME = 0.3; // s the landing glint lasts (magic and better)
-const HERO_FLASH_TIME = 0.07; // hero hit flash length (s)
-const HERO_FLASH_GAP = 0.3; // min time between two hero flashes (s)
+const HERO_FLASH_TIME = 0.14; // hero hit flash length (s): a clear hit mark
+const HERO_FLASH_GAP = 0.22; // min time between two hero flashes (s)
 const TARGET_LOW_W = 720; // world buffer: fine pixels, large readable sprites
 /** See-through props: opacity of a tall prop that hides someone, minimum prop height (screen units; a hero is ~49), body point above the feet, and how close to you others must be to count (world px, |dx|+|dy|). */
 const PROP_FADE_MIN = 0.35;
@@ -292,6 +295,12 @@ export function pxFrame(g: CanvasRenderingContext2D, x: number, y: number, w: nu
   g.fillRect(x + 2, y + 2, w - 4, h - 4);
 }
 
+const STRUCT_NAME: Record<string, string> = { lane_outer: "Outer Spire", lane_inner: "Inner Spire", lane_ward: "Ward", lane_core: "Core" };
+/** Breachway: can this structure be hit now (every one in front of it in its line is down)? */
+function laneStructOpen(k: string, tm: 0 | 1): boolean {
+  const i = (STRUCT_KINDS as readonly string[]).indexOf(k);
+  return i <= 0 || !laneStructUp(STRUCT_KINDS[i - 1], tm);
+}
 /** Breachway structure look: painted prop id and scale (existing art, docs/MODE-LANES.md). */
 const STRUCT_PROP: Record<string, [string, number]> = {
   lane_outer: ["bs_spire_tall", 1.1],
@@ -306,7 +315,7 @@ export class Renderer {
   private g: CanvasRenderingContext2D;
   private worldG: CanvasRenderingContext2D;
   private hlo = document.createElement("canvas");
-  private hg = this.hlo.getContext("2d")!;
+  private hg = this.hlo.getContext("2d", { willReadFrequently: false })!; // GPU (gfx/softcanvas.ts)
   private hudScale = 4;
   private hw = 320;
   private hh = 180;
@@ -371,7 +380,7 @@ export class Renderer {
   constructor(private canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext("2d")!;
     this.lo = document.createElement("canvas");
-    this.g = this.lo.getContext("2d")!;
+    this.g = this.lo.getContext("2d", { willReadFrequently: false })!; // GPU: the world pass (gfx/softcanvas.ts)
     this.worldG = this.g;
     this.resize();
     window.addEventListener("resize", () => this.resize());
@@ -941,8 +950,8 @@ export class Renderer {
         list.push({ d: depthOf(o.x, o.y), fn: () => (pp && drawProp(this.g, pp.id, this.sx(o.x, o.y), this.sy(o.x, o.y), pp.scale, { flipX: pp.flip, alpha: fa })) || this.blit(obstacleSprite(k), this.sx(o.x, o.y), this.sy(o.x, o.y)) });
       } else if (k >= OBSTACLES.length + SCATTER.length) {
         const w = this.dress![k - OBSTACLES.length - SCATTER.length];
-        if (!this.onScreen(w.x, w.y, w.deep ? 160 : 60)) continue;
-        const fa = w.deep ? this.propFade(k, w.pp, w.x, w.y, dt) : 1;
+        if (!this.onScreen(w.x, w.y, 160)) continue;
+        const fa = this.propFade(k, w.pp, w.x, w.y, dt); // loop21: rim fill is small trees / boulders now, so it fades in front of you too
         list.push({ d: depthOf(w.x, w.y), fn: () => drawProp(this.g, w.pp.id, this.sx(w.x, w.y), this.sy(w.x, w.y), w.pp.scale, { flipX: w.pp.flip, alpha: fa }) });
       } else {
         const i = k - OBSTACLES.length;
@@ -1073,20 +1082,32 @@ export class Renderer {
       // bar, or overhead with the bar off), so several rares no longer stack 2-line plates into a column.
       const modIds = new Set(near.length > 1 ? [] : near.map((m) => m.id));
       this.hudR = laneRects(getHudLayout());
+      this.selfPlate = undefined;
       if (getSettings().interface.playerLabels !== "off")
-        for (const p of v.players.values()) if (p.alive && this.onScreen(p.x, p.y)) this.plates.push({ x: this.sx(p.x, p.y) - 20, y: this.plateY(p) - 9, w: 40, h: 13 });
+        for (const p of v.players.values())
+          if (p.alive && this.onScreen(p.x, p.y)) {
+            const r = { x: this.sx(p.x, p.y) - 20, y: this.plateY(p) - 9, w: 40, h: 13 };
+            this.plates.push(r);
+            if (p.id === v.selfId) this.selfPlate = r; // loop21: monster bars over your own plate are dimmed
+          }
       // loop17: PoE2 declutter. The focused enemy's name and mods are in the top target bar and a damaged
       // boss's in the boss bar, so overhead they keep only the life bar; magic (and pack-granted) monsters show no name unless
       // focused; at most 3 other names per screen (rarest first, then front-most, from the sort above).
       const topBar = getSettings().interface.targetBar !== false;
       let named = 0;
       for (const m of ms) {
+        if (m.tm !== undefined && isStructKind(m.k)) {
+          this.drawStructPlate(m, v.players.values()); // Breachway: owner plate
+          continue;
+        }
         const f = focusOf(m);
         const boss = !!MONSTER_BY_ID.get(m.k)?.boss;
         const rr = m.rr ?? 0;
+        const laneElite = m.tm !== undefined && rr >= 1 && m.hp > 0; // Breachway: elites / exiles always named and marked
         let bare = topBar && (f || (boss && m.hp < m.mhp));
-        if (!bare && !f && !boss && (rr >= 1 || m.gm)) bare = rr <= 1 || named++ >= 3; // granted-mod (pack) normals count as magic
+        if (!bare && !f && !boss && !laneElite && (rr >= 1 || m.gm)) bare = rr <= 1 || named++ >= 3; // granted-mod (pack) normals count as magic
         this.drawMonsterLabel(m, f, !me || modIds.has(m.id), bare);
+        if (laneElite) this.drawLaneEliteMark(m);
       }
       for (const fn of this.plateText) fn(); // loop19: names over every bar
       this.plateText.length = 0;
@@ -1213,6 +1234,8 @@ export class Renderer {
 
   // ---- ground layer --------------------------------------------------------
   /** Blit the visible ground chunks; build missing ones under a small per-frame budget, then prefetch a ring. */
+  /** Smoothed cost of one wall / water chunk build (ms), for the per-frame ground budget. */
+  private chunkCost = 3;
   private drawGround() {
     const { g } = this;
     const R = groundChunkRange();
@@ -1220,19 +1243,25 @@ export class Renderer {
     const x1 = Math.min(R.cx1, Math.floor((this.ww - this.offX) / CHUNK));
     const y0 = Math.max(R.cy0, Math.floor(-this.offY / CHUNK));
     const y1 = Math.min(R.cy1, Math.floor((this.wh - this.offY) / CHUNK));
-    const until = performance.now() + 6;
+    const until = performance.now() + GROUND_BUDGET_MS;
     let built = 0;
     const painted = paintedGroundReady(); // engine-sprites: painted hollowpine tiles under the wall / water chunks
     setGroundHoles(painted);
     const sc = g.getTransform().a || 1;
     const snap = (v: number) => Math.round(v * sc) / sc;
+    /** Wall / water chunk build (2-5 ms each): the first one a frame always, more only when the measured cost still fits. */
+    const build = (cx: number, cy: number) => {
+      const t = performance.now();
+      const c = buildChunk(cx, cy);
+      if (c) this.chunkCost = this.chunkCost * 0.8 + (performance.now() - t) * 0.2;
+      built++;
+      return c;
+    };
+    const fits = () => built === 0 || performance.now() + this.chunkCost < until;
     for (let cy = y0; cy <= y1; cy++) {
       for (let cx = x0; cx <= x1; cx++) {
         let c = cachedChunk(cx, cy);
-        if (c === undefined && (built === 0 || performance.now() < until)) {
-          c = buildChunk(cx, cy);
-          built++;
-        }
+        if (c === undefined && fits()) c = build(cx, cy);
         // Snapped to device pixels: at a fractional position neighbouring chunks both antialias
         // their shared edge and the chunk grid shows as faint lines.
         const dx = snap(this.offX + cx * CHUNK);
@@ -1240,13 +1269,13 @@ export class Renderer {
         const dw = snap(this.offX + (cx + 1) * CHUNK) - dx;
         const dh = snap(this.offY + (cy + 1) * CHUNK) - dy;
         if (c && painted) {
-          // Painted chunks are budgeted like the wall chunks: a whole row of them entering the view
-          // (walking, camera shake, coming back to a place whose chunks were evicted) used to be
-          // painted inside one frame, a 50-200 ms hitch. A late one shows the plain base tile.
+          // Painted chunks are budgeted like the wall chunks and painted a few layers per frame (sprites2d/ground.ts):
+          // a whole row of them entering the view used to be painted inside one frame, a 50-200 ms hitch, and later
+          // one whole 5-10 ms chunk per frame. A late one shows the plain base tile.
           const due = paintedGroundDue(cx, cy);
-          const go = !due || built === 0 || performance.now() < until;
-          if (due && go) built++;
-          const pg = paintedGroundChunk(cx, cy, CHUNK, go);
+          const go = due && (built === 0 || performance.now() < until);
+          if (go) built++;
+          const pg = paintedGroundChunk(cx, cy, CHUNK, go, until);
           if (pg) g.drawImage(pg, dx, dy, dw, dh);
           else fillPaintedGround(g, this.offX, this.offY, dx, dy, CHUNK);
         }
@@ -1258,10 +1287,16 @@ export class Renderer {
         }
       }
     }
-    // Prefetch one chunk ring beyond the view with whatever budget is left.
+    // Prefetch one chunk ring beyond the view with whatever budget is left (painted ground too, so walking
+    // finds the next row ready instead of painting it the frame it shows).
     for (let cy = Math.max(R.cy0, y0 - 1); cy <= Math.min(R.cy1, y1 + 1) && performance.now() < until; cy++) {
       for (let cx = Math.max(R.cx0, x0 - 1); cx <= Math.min(R.cx1, x1 + 1) && performance.now() < until; cx++) {
-        if (cachedChunk(cx, cy) === undefined) buildChunk(cx, cy);
+        let c = cachedChunk(cx, cy);
+        if (c === undefined) {
+          if (performance.now() + this.chunkCost >= until) continue;
+          c = build(cx, cy);
+        }
+        if (c && painted && paintedGroundDue(cx, cy)) paintedGroundChunk(cx, cy, CHUNK, true, until);
       }
     }
   }
@@ -1281,6 +1316,9 @@ export class Renderer {
     const tot = Object.values(mix).reduce((a, b) => a + b, 0) || 1;
     const rockP = ((mix.rocks ?? 0) + (mix.ruin ?? 0)) / tot;
     const at = (i: number, j: number) => (i < 0 || j < 0 || i >= m.cols || j >= m.rows ? WALL : m.solid[j * m.cols + i]);
+    // loop21: cells that already draw a wall tree (the render keeps about 55%), so layer-2 fill goes only into the holes
+    const drawn = new Set<number>();
+    for (const o of OBSTACLES) if (o.wall && o.k !== "water" && hash2(Math.round(o.x), Math.round(o.y), 77) >= 0.45) drawn.add(Math.floor(o.y / C) * m.cols + Math.floor(o.x / C));
     for (let j = 0; j < m.rows; j++)
       for (let i = 0; i < m.cols; i++) {
         if (at(i, j) !== WALL) continue;
@@ -1290,10 +1328,13 @@ export class Renderer {
             if (at(i + di, j + dj) !== WALL) dist = Math.min(dist, Math.max(Math.abs(di), Math.abs(dj)));
         if (dist === 1) continue; // rims: handled from the obstacle list below
         const hx = hash2(i, j, 91);
-        if (hx > (dist >= 3 ? 0.6 : 0.3)) continue;
+        // layer 2 (loop21): 30% of all cells left see-through gaps between the rim and the deep forest; now 80% of
+        // the cells that draw no wall tree of their own (about 90% covered, was about 57%)
+        if (dist === 2 && drawn.has(j * m.cols + i)) continue;
+        if (hx > (dist >= 3 ? 0.6 : 0.8)) continue;
         const x = (i + 0.5) * C + (hash2(i, j, 92) - 0.5) * C * 0.6;
         const y = (j + 0.5) * C + (hash2(i, j, 93) - 0.5) * C * 0.6;
-        const pp = wallDressProp(x, y, true, hash2(i, j, 94) < rockP);
+        const pp = wallDressProp(x, y, true, hash2(i, j, 94) < rockP, dist === 2);
         if (pp) out.push({ x, y, pp, deep: true });
       }
     for (const o of OBSTACLES) {
@@ -1521,6 +1562,14 @@ export class Renderer {
     this.blit(s, 0, 0);
     const tn = ailTint(p.st, this.time); // combat-systems: freeze / shock / ignite tint
     if (tn) drawTint(this.g, s, 0, 0, tn.color, tn.a);
+    // Hit mark: the whole body flashes bright red-white for a moment when struck.
+    const hf = this.flashes.get("p:" + p.id) ?? 0;
+    if (hf > 0) {
+      const op = g.globalCompositeOperation;
+      g.globalCompositeOperation = "lighter";
+      drawTint(this.g, s, 0, 0, "#ff9a8a", 0.75 * Math.min(1, hf / HERO_FLASH_TIME));
+      g.globalCompositeOperation = op;
+    }
     drawAilFx(this.g, p.st, s, 0, 0, this.time, p.id);
     g.restore();
   }
@@ -1562,6 +1611,7 @@ export class Renderer {
   }
   /** Slight scale-up for rare / unique (non-boss) monsters so they stand out of the pack. */
   private rarityScale(m: MonsterSnap) {
+    if (m.tm !== undefined && m.rr) return 1.18; // Breachway: lane elites stand out of their wave
     if (!m.rr || m.rr < 2 || MONSTER_BY_ID.get(m.k)?.boss) return 1;
     return m.rr === 3 ? 1.16 : 1.1;
   }
@@ -1662,7 +1712,7 @@ export class Renderer {
       cv.width = this.lo.width;
       cv.height = this.lo.height;
     }
-    const fg = cv.getContext("2d")!;
+    const fg = cv.getContext("2d", { willReadFrequently: false })!;
     fg.setTransform(1, 0, 0, 1, 0, 0);
     fg.clearRect(0, 0, cv.width, cv.height);
     fg.setTransform(this.Z, 0, 0, this.Z, 0, 0);
@@ -1800,15 +1850,92 @@ export class Renderer {
     g.ellipse(this.sx(m.x, m.y), this.sy(m.x, m.y), R, R * SQ, 0, 0, Math.PI * 2);
     g.stroke();
     if (m.rr) {
-      // Lane elites / exiles: a second, rarity-coloured ring so they read inside a wave.
-      g.strokeStyle = RARITY_INFO[m.rr].color;
+      // Lane elites / exiles: a pulsing rarity-coloured glow and a second ring so they read inside a wave.
+      const rc = RARITY_INFO[m.rr].color;
+      const R2 = R + 7 * K;
+      const pulse = 0.75 + 0.25 * Math.sin(this.time * 5 + m.id);
+      const x = this.sx(m.x, m.y);
+      const y = this.sy(m.x, m.y);
+      g.save();
+      g.translate(x, y);
+      g.scale(1, SQ);
+      const gr = g.createRadialGradient(0, 0, R * 0.3, 0, 0, R2 * 1.35);
+      gr.addColorStop(0, rc + "00");
+      gr.addColorStop(0.6, rc + "55");
+      gr.addColorStop(1, rc + "00");
+      g.globalAlpha = pulse;
+      g.fillStyle = gr;
+      g.beginPath();
+      g.arc(0, 0, R2 * 1.35, 0, Math.PI * 2);
+      g.fill();
+      g.restore();
+      g.strokeStyle = rc;
       g.globalAlpha = 0.95;
       g.lineWidth = 3;
       g.beginPath();
-      g.ellipse(this.sx(m.x, m.y), this.sy(m.x, m.y), R + 7 * K, (R + 7 * K) * SQ, 0, 0, Math.PI * 2);
+      g.ellipse(x, y, R2, R2 * SQ, 0, 0, Math.PI * 2);
       g.stroke();
     }
     g.restore();
+  }
+
+  /** Breachway: a bobbing rarity-coloured marker over a lane elite / exile (HUD pass, over every bar). */
+  private drawLaneEliteMark(m: MonsterSnap) {
+    const col = RARITY_INFO[m.rr ?? 1].color;
+    const x = this.sx(m.x, m.y);
+    // Just over the sprite's head (HUD units: about 1.5 x radius above the feet, rarity scale included).
+    const u = 1;
+    const y = this.sy(m.x, m.y) - (12 + m.r * 0.9) * this.rarityScale(m) + Math.sin(this.time * 4 + m.id) * 1.5;
+    this.plateText.push(() => {
+      const g = this.g;
+      g.save();
+      g.fillStyle = col;
+      g.strokeStyle = "#0a0709";
+      g.lineWidth = 1.5 * u;
+      g.beginPath();
+      g.moveTo(x - 5 * u, y - 5 * u);
+      g.lineTo(x + 5 * u, y - 5 * u);
+      g.lineTo(x, y + 2 * u);
+      g.closePath();
+      g.fill();
+      g.stroke();
+      g.restore();
+    });
+  }
+
+  /** Breachway: owner plate over a structure: team name and structure name in the team colour, a team-coloured
+   *  life bar; grey while it cannot be hit yet (the one in front of it still stands). */
+  private drawStructPlate(m: MonsterSnap, players: Iterable<PlayerSnap>) {
+    if (m.hp <= 0) return;
+    const tm = m.tm ?? 0;
+    const col = TEAM_COLORS[tm];
+    const open = laneStructOpen(m.k, tm);
+    const lift = m.k === "lane_core" ? 150 : m.k === "lane_ward" ? 100 : 170;
+    const x = this.sx(m.x, m.y);
+    let y = this.sy(m.x, m.y) - this.up(lift * K * 0.5) - 26;
+    const bw = m.k === "lane_core" ? 64 : 48;
+    // One line: the structure's name in its team's colour over a team-coloured bar. It never covers a
+    // player (moves above any hero standing in front of it) and is dropped where a HUD panel sits.
+    const rect = { x: x - bw / 2 - 1, y: y - 8, w: bw + 2, h: 11 };
+    const heroes = [...players].filter((q) => q.alive && this.onScreen(q.x, q.y));
+    const hit = (a: PlateRect, b: PlateRect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+    for (let i = 0; i < 4; i++) {
+      const p = heroes.find((q) => hit(rect, { x: this.sx(q.x, q.y) - 20, y: this.plateY(q) - 10, w: 40, h: this.sy(q.x, q.y) - this.plateY(q) + 10 }));
+      if (!p) break;
+      const dy = rect.y + rect.h - (this.plateY(p) - 11);
+      rect.y -= dy;
+      y -= dy;
+    }
+    if (this.hudR.some((r) => hit(rect, r))) {
+      // Under a HUD panel: below the structure's base ring instead, or not at all.
+      y = this.sy(m.x, m.y) + this.up((m.r + 18) * K * SQ) + 12;
+      rect.y = y - 8;
+      if (this.hudR.some((r) => hit(rect, r))) return;
+    }
+    this.bar(x - Math.floor(bw / 2), y, bw, m.hp / m.mhp, open ? col : "#77737e");
+    this.plates.push(rect);
+    const name = STRUCT_NAME[m.k] ?? m.k;
+    this.plateText.push(() => skinText(this.g, name, x, y - 7, { size: 5, face: "display", align: "center", color: col, alpha: open ? 1 : 0.7 }));
   }
 
   /** Breachway structures: existing painted props on a team-coloured rune ring (no new art). */
@@ -2147,6 +2274,7 @@ export class Renderer {
   }
 
   private plateText: (() => void)[] = []; // loop19: queued plate text (drawn after all bars)
+  private selfPlate: PlateRect | undefined; // loop21: your own name / life plate this frame
   private hudR: PlateRect[] = []; // loop19: HUD-owned rects this frame (plates never land in them)
   private plates: PlateRect[] = []; // polish: nameplates placed this frame (stacked to avoid overlap)
 
@@ -2158,7 +2286,7 @@ export class Renderer {
       const t0 = (m.k === "cragback" ? 52 : m.k === "bog_seer" ? 30 : 20) * (m.r / (MONSTER_BY_ID.get(m.k)?.radius ?? m.r)) * ZP * 1.12 + 10;
       drawStatus(this.g, m.st, this.sx(m.x, m.y), this.sy(m.x, m.y) - this.up(t0) - (m.e ? 24 : 4), 1, this.time);
     }
-    if (drawMonLabel(this.monFx(), m, damaged, this.up((smoothTop(m.k, m.r) ?? (m.k === "cragback" ? 52 : m.k === "bog_seer" ? 30 : 20) * ZP * 1.12) + 10), { focus, plates: this.plates, mods, bare, hud: this.hudR, defer: this.plateText })) return; // monsters agent: rarity nameplates (polish: smooth, decluttered)
+    if (drawMonLabel(this.monFx(), m, damaged, this.up((smoothTop(m.k, m.r) ?? (m.k === "cragback" ? 52 : m.k === "bog_seer" ? 30 : 20) * ZP * 1.12) + 10), { focus, plates: this.plates, mods, bare, hud: this.hudR, defer: this.plateText, self: this.selfPlate })) return; // monsters agent: rarity nameplates (polish: smooth, decluttered)
     if (!damaged && !m.e) return;
     const top = m.k === "cragback" ? 52 : m.k === "bog_seer" ? 30 : 20;
     const sc = m.r / (MONSTER_BY_ID.get(m.k)?.radius ?? m.r);
@@ -2237,13 +2365,18 @@ export class Renderer {
   }
 
   /** worldui: hovered hostile (monster / other player) under the cursor, refreshed every HUD pass. */
-  private hoverEnt: { m: boolean; id: number; col: string } | null = null;
+  private hoverEnt: { m: boolean; id: number; col: string; x: number; y: number } | null = null;
   private hoverInteract = false;
 
   /** What the cursor is over in the world (main.ts maps it to a cursor): null = nothing of note. */
   hoverKind(): "enemy" | "interact" | null {
     if (!input.overCanvas) return null;
     return this.hoverEnt ? "enemy" : this.hoverInteract ? "interact" : null;
+  }
+
+  /** Aim: world feet of the hostile under the cursor (the cursor sits on its body, above the ground point). */
+  hoverAimPoint(): { x: number; y: number } | null {
+    return input.overCanvas && this.hoverEnt ? { x: this.hoverEnt.x, y: this.hoverEnt.y } : null;
   }
 
   private pickHover(v: View) {
@@ -2261,7 +2394,7 @@ export class Renderer {
       const d = dx * dx + dy * dy * 0.25;
       if (d < bestD) {
         bestD = d;
-        this.hoverEnt = { m, id, col };
+        this.hoverEnt = { m, id, col, x, y };
       }
     };
     for (const m of v.monsters.values()) {

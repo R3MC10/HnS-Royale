@@ -383,6 +383,31 @@ kills 15%; reveal also at 7 left 25%. Boss XP arms on top of both: full 66% kill
 killer wins most matches because the strongest bot takes the boss; the XP is worth 10-15 points of that at most. Sims are
 not deterministic: about +-5 points of noise on a 264-match share, +-6 on the killer win share (about 60 kills).
 
+## Classes, ascendancies, tree (balance pass, 2026-11-11)
+
+Headless sims (scratchpad duel harness, FDM 1 duels, FDM 2 matches). Duels: each class vs the field at Lv 8 and 14, 672 duels. Ascendancy duels: each ascendancy vs the field at ascendancy levels. Matches: 16 bots, about 96 matches each, 0 errors.
+
+| Class | Duel before | Duel after | Asc before (3 ascendancies) | Asc after | Match wins before | after |
+|---|---|---|---|---|---|---|
+| harrier | 86 | 65 | 73/66/79 | 46/39/50 | 24% | 9% |
+| mistrunner | 82 | 60 | 90/82/80 | 83/74/79 | 22% | 9% |
+| drifter | 70 | 40 | 86/58/73 | 45/39/32 | 21% | 14% |
+| lanternwright | 60 | 62 | 63/62/61 | 68/63/60 | 8% | 3% |
+| reaver | 39 | 58 | 13/13/24 | 36/38/41 | 10% | 16% |
+| bellwarden | 23 | 36 | 25/18/32 | 47/34/39 | 4% | 21% |
+| gutterblade | 22 | 26 | 38/52/26 | 33/49/34 | 8% | 19% |
+| gloamcaller | 19 | 52 | 15/21/50 | 51/56/65 | 2% | 8% |
+
+Changes:
+- Weapons: per-group damage tune (dagger 1.75, staff 2, mace 1.6, maul 1.45, axe 1.2, bow 0.75, others about 1.1); dagger and staff range up, heavier knockback on axes and maces, bow slower to fire. Reaver armour 40, Bellwarden str 22 / armour 45.
+- Conditional "more" damage (Bloodfury, low life, calm, trophies...) now also scales spells.
+- Execute, splash and kill nova now work on players (execute at 60% of its threshold vs players).
+- Tree: every class has two 5-node wings (offence notable early, defence notable late). Keystones hang between two spoke notables instead of the hub, so they cost a real path. Bloodfury is +30% more dealt / +15% more taken; Stoneheart +50% armour, +10% life; Carrion Feast gains leech.
+- Ascendancies: PvE-only and XP notables replaced with combat ones, trap nodes removed, reflect cut across the board, weak sets (ratking, roadwarden, oathbreaker, dirgesinger, marshlight, alleyknife) buffed. Spread within each class is now 5 to 16 points.
+- Tree screen: search matches Polish and English text; hovering your class start or ascendancy root shows the summed stats of all allocated nodes.
+
+Still open: at Lv 20 casters and staffs pull far ahead of axe, sword and bow; duel strength and match wins disagree (lanternwright 3% wins); bots do not dodge player projectiles, so ranged looks stronger in sims than it will be with people.
+
 ## What bots cannot tell us
 
 - Bots now sidestep monster shots and leave line telegraphs, but they read 45-95% of shots on a fixed

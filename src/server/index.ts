@@ -77,7 +77,7 @@ const http = createServer((req, res) => {
 // host-in-browser worker). This file is only the Node glue: ws transport + the 30 Hz loop.
 // WebSocket upgrades on /lobby go to the P2P lobby + signalling service (src/lobby/service.ts).
 
-const host = new GameHost({ dev: DEV });
+const host = new GameHost({ dev: DEV, ...(DEV && process.env.HNS_PIN ? { pin: Number(process.env.HNS_PIN) } : {}) }); // HNS_PIN: dev-only pinned seed (server/devpin.ts)
 const game = host.game;
 const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 });
 const lobby = new LobbyService();

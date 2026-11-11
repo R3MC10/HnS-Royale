@@ -266,7 +266,8 @@ export function initMenus(h: MenuHooks): Menus {
     const browse = btn("Play · Find a room", "primary", () => nameOk() && renderBrowser(), "ui.confirm");
     const hostB = btn("Create room", "", () => nameOk() && startHosting(), "ui.confirm");
     const opts = btn("Options", "", () => openOptions());
-    const quit = btn("Quit to title", "", () => renderTitle());
+    const appQuit = (window as unknown as { HNS_APP?: { quit: () => void } }).HNS_APP?.quit;
+    const quit = appQuit ? btn("Quit game", "", () => appQuit()) : btn("Quit to title", "", () => renderTitle());
     statusEl = el("div", "m-status", msg);
     const ded = el("a", "m-note", "Dev: join this page's dedicated server");
     ded.href = "#";
@@ -565,7 +566,7 @@ export function initMenus(h: MenuHooks): Menus {
       }
       left.append(row);
     }
-    left.append(btn(isHost ? "Close hall" : "Leave", "small", leaveRoom));
+    left.append(btn(isHost ? "Close hall" : "Leave", "small", leaveRoom), btn("Options", "small", () => openOptions()));
 
     // Middle: class pick, ready / start, settings.
     const mid = el("div", "m-panel m-col");

@@ -1112,3 +1112,39 @@ Same setup as round 17: solo headless Chrome at 1280x720, map seed 424242, a fre
 
 - [x] Gameplay rounds 19 - 20: blocked ground dressed with existing trees, rocks and ferns (+0.1-0.2 ms at edges); rare
   mod lines only for the focused one when several are near; plates kept out of HUD rects and drawn over all bars
+
+## Gameplay round 21 — 2026-11-11 — pinned dev captures, rim fill, melee names
+
+- Dev pin (new, dev only): `HNS_DEV=1 HNS_PIN=<seed>` (or `GameHost({ dev, pin })`) pins the map seed and seeds
+  Math.random in that process, reset at every new map, so the same round start rolls the same packs and rares
+  (server/devpin.ts; game.ts newMap; host.ts; index.ts). Client `?dev=1&cam=<x>,<y>[,<zoom>]` pins the camera on a
+  world point with the HUD shown (devcam.ts). Client input timing still varies, so fights drift; the map, the camps and
+  the camera are the same. All round 21-23 shots in the scratchpad (royale-r2x-*.png) use it.
+- Rim fill: tree-less rim cells used ferns, rock piles and dead bushes, the same props as the walkable-ground scatter,
+  so the edge read as open ground. Now only small conifers, a mid conifer and boulders (the blocking-obstacle art, a
+  size down); the pale bare-rooted conifer_small_b..d saplings were tried and dropped (decor.ts RIM_FILL). Rim fill
+  now uses the see-through fade like deep trees, since it is tall now (render.ts).
+- Melee names: MAX_PUSH 22 -> 4 (monsters_fx.ts). A non-focused name is no longer stacked into a column with leader
+  lines; it gets a nudge clear of a bar or is dropped and the bar stays.
+
+## Gameplay round 22 — 2026-11-11 — layer-2 wall gaps, bars over your plate
+
+- Layer 2 (one cell behind the rim): about 57% of cells drew anything, leaving see-through holes between the rim and
+  the deep forest. Fill now goes into 80% of the layer-2 cells that draw no wall tree of their own (about 90%
+  covered), using mid-size trees / boulders (decor.ts MID_TREES / MID_ROCKS) so tall deep trees do not hide the hero at
+  the edge (render.ts buildDress). The first try used the deep trees and hid the hero: rejected.
+- Monster life bars over your own name / life plate: non-focused, non-boss ones are drawn at 30% alpha
+  (monsters_fx.ts `self` option, render.ts selfPlate). No new strings.
+
+## Gameplay round 23 — 2026-11-11 — boss killer share re-measured; dressing cost
+
+- Boss killer win share, live tree, 15 bots (ml13 harness, scratchpad balance/out r23b0, r23a1):
+  - Baseline (boss XP 30): 80 matches, boss killed in 25%, killer wins 10/20 = 50% (fair share 17%), top 3 80%.
+  - Boss XP x0.4 (12): 110 matches, killed 22%, killer wins 12/24 = 50% (fair share 15%), killer level 17.8 -> 16.8.
+  - Not adopted: no measurable effect, and it makes the one objective worth less. The 62% figure from pass 4 (60 kills)
+    and today's 50% (20 kills) are within noise (+-11 points at 20 kills). Bots go for the boss once level 12, so the
+    first bot ready is already the strongest; most of the share is that selection, not the reward.
+- Dressing cost (seed 424242, deterministic count): layer-2 fill 325 -> 503 props (+178 per map); layer-2 coverage
+  58% -> 89%. Draw-time samples were 5.2-9.2 ms in both builds on a machine shared with other jobs: no regression
+  could be told apart from the noise.
+- Seen, not fixed: the 3D hero's visored_helm mesh renders as a small red cap (art; needs the glb).

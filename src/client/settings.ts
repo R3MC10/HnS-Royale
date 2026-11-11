@@ -80,6 +80,8 @@ export interface GameplaySettings {
   autoPickup: boolean;
   colorblind: boolean;
   confirmLeave: boolean;
+  /** Picked-up gear goes straight into an empty equipment / flask / charm slot it fits. */
+  autoEquip: boolean;
   /** UI language; "auto" follows the system / browser language. */
   language: "auto" | "en" | "pl";
 }
@@ -115,7 +117,7 @@ export function defaultSettings(): Settings {
     },
     interface: {
       uiScale: 1,
-      damageNumbers: "off", // worldui: PoE2 shows no floating damage numbers by default (Interface option turns them on)
+      damageNumbers: "own", // on by default (user request); Options > Interface can turn them off
       playerLabels: "all",
       monsterBars: "damaged",
       alwaysShowLabels: true,
@@ -143,7 +145,7 @@ export function defaultSettings(): Settings {
       targetBar: true,
     },
     audio: { master: 0.8, music: 0.6, effects: 0.8, ui: 0.7, muteUnfocused: true },
-    game: { autoPickup: false, colorblind: false, confirmLeave: true, language: "auto" },
+    game: { autoPickup: false, colorblind: false, confirmLeave: true, autoEquip: true, language: "auto" },
   };
 }
 

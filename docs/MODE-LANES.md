@@ -132,6 +132,15 @@ These numbers are not measured. They are the first thing to check with bots (bui
 Mobs damage structures with their normal hit damage x2, so a wave that nobody answers chips about
 3-5% off an outer spire before the bolts kill it.
 
+**Tuned by bot sims (Breachway upgrade rounds 1-3).** The code now uses: structure life x0.6 of the table
+(outer x0.5); mobs x4 and elites / exiles x7 hit damage on structures; spire bolts 30% of a mob's life;
+late siege on every structure hit x1.25 from 12:00, x1.5 from 15:00 and x2 from 20:00 (replaces the
++25% at 15:00 and the 25:00 failsafe). Momentum: each enemy structure a team has broken adds one
+rusher to its waves, and from the second one every wave is led by a magic elite. Rogue exiles have
+2.5x life and go for the structure in reach unless a hero is within 300 px. XP: wave purse
+`min(110, 22 + 5.5 x minute)`, passive 0.6 / s, catch-up as in section 9 on purse and passive XP.
+Measured (6 headless 5v5 bot runs): every match ends on a Core kill in 17-22 min.
+
 ## 6. Waves
 
 - Spawn at 0:30, then every 25 s. Every 20 s from 10:00, every 15 s from 15:00.

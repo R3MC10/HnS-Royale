@@ -577,8 +577,10 @@ export class SkillSystem {
 
   private targets(owner: ServerPlayer): Target[] {
     const out: Target[] = [];
-    for (const m of this.host.monsters.monsters.values()) if (m.alive) out.push({ kind: "m", m });
-    for (const o of this.host.players.values()) if (o !== owner && o.joined && o.alive) out.push({ kind: "p", p: o });
+    // Enemies only: Breachway allies (same team) are never picked, so totems / chains / auto-aim go for the enemy.
+    const tm = owner.team;
+    for (const m of this.host.monsters.monsters.values()) if (m.alive && (tm === undefined || m.team !== tm)) out.push({ kind: "m", m });
+    for (const o of this.host.players.values()) if (o !== owner && o.joined && o.alive && (tm === undefined || o.team !== tm)) out.push({ kind: "p", p: o });
     return out;
   }
 
@@ -610,10 +612,14 @@ export class SkillSystem {
       }
       case "volley":
       case "bolt": {
+        // Projectiles leave toward where the cursor is at release.
+        const aimA = p.aim ?? ang;
+        const ca = Math.cos(aimA);
+        const sa = Math.sin(aimA);
         const n = Math.max(1, a.count);
         for (let i = 0; i < n; i++) {
           const off = (i - (n - 1) / 2) * a.spread;
-          this.spawnProj(p, a, p.x + ca * (PLAYER_RADIUS + 4), p.y + sa * (PLAYER_RADIUS + 4), ang + off, a.kind === "bolt" ? 9 : a.returns ? 11 : ARROW_RADIUS, a.kind === "bolt" && !a.pierce ? 42 : 0);
+          this.spawnProj(p, a, p.x + ca * (PLAYER_RADIUS + 4), p.y + sa * (PLAYER_RADIUS + 4), aimA + off, a.kind === "bolt" ? 9 : a.returns ? 11 : ARROW_RADIUS, a.kind === "bolt" && !a.pierce ? 42 : 0);
         }
         break;
       }
@@ -742,11 +748,12 @@ export class SkillSystem {
     const w = weaponOf(p.equip.mainhand);
     if (!p.equip.mainhand || !isRangedWeapon(w)) return false;
     const a = computeSkill(null, p.stats, w, true);
-    const ca = Math.cos(p.angle);
-    const sa = Math.sin(p.angle);
+    const aimA = p.aim ?? p.angle; // fire toward the cursor at release
+    const ca = Math.cos(aimA);
+    const sa = Math.sin(aimA);
     a.speed = BASIC_ARROW.speed;
     a.range = BASIC_ARROW.range;
-    this.spawnProj(p, a, p.x + ca * (PLAYER_RADIUS + 4), p.y + sa * (PLAYER_RADIUS + 4), p.angle, ARROW_RADIUS, 0);
+    this.spawnProj(p, a, p.x + ca * (PLAYER_RADIUS + 4), p.y + sa * (PLAYER_RADIUS + 4), aimA, ARROW_RADIUS, 0);
     return true;
   }
 

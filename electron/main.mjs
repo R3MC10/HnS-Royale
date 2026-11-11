@@ -115,6 +115,8 @@ const shout = (d) => {
   if (msg.length < 8000) try { udp.send(msg, BEACON_PORT, "255.255.255.255", () => {}); } catch {}
 };
 setInterval(() => beacon && shout(beacon), 1000).unref();
+ipcMain.on("app:quit", () => app.quit());
+
 ipcMain.on("lan:beacon-set", (_e, d) => {
   if (!d || typeof d !== "object") return;
   if (typeof d.c === "string") beacon = d;

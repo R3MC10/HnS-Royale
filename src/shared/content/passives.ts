@@ -33,7 +33,7 @@ export type PassiveKey =
   | "calmDmg" // % more damage if you haven't been hit for 3 s
   | "stillAtk" // % attack speed while standing still
   | "fullBarrierDmg" // % more damage while barrier is full
-  | "killNova" // on kill, % of the victim's max life dealt to enemies within 160 px
+  | "killNova" // on kill, % of the victim's max life dealt to enemies within 160 px (players hit at the PvP rate)
   | "bountyFlask" // player kills refill flasks (1)
   | "bountyXp" // % more XP from player kills
   | "trophyDmg" // % more damage per player killed this match (max 5 stacks)
@@ -41,8 +41,8 @@ export type PassiveKey =
   | "chargesOnKill" // + flask charges per kill
   | "lifeLeech" // % of hit damage dealt recovered as life
   | "barrierLeech" // % of hit damage dealt recovered as barrier
-  | "splash" // % of hit damage dealt to other monsters near a monster you hit
-  | "execute" // monsters you hit below this % of life die
+  | "splash" // % of hit damage dealt to other enemies near the target
+  | "execute" // enemies you hit below this % of life die (players: 60% of the threshold)
   | "firstHitDmg" // % more damage against enemies at full life
   | "eliteDmg" // % more damage against elites and trial guardians
   | "pvpDmg" // % more damage against players
@@ -110,7 +110,7 @@ export const PASSIVE_LABELS: Partial<Record<PassiveKey, string>> = {
   calmDmg: "{v}% more Damage if you haven't been Hit for 3s",
   stillAtk: "{v}% increased Attack Speed while standing still",
   fullBarrierDmg: "{v}% more Damage while your Barrier is full",
-  killNova: "Enemies you kill burst, dealing {v}% of their maximum Life to monsters nearby",
+  killNova: "Enemies you kill burst, dealing {v}% of their maximum Life to enemies nearby",
   bountyFlask: "Killing a player refills your Flasks",
   bountyXp: "{v}% more Experience from killing players",
   trophyDmg: "{v}% more Damage per player you have killed this match (up to 5)",
@@ -118,8 +118,8 @@ export const PASSIVE_LABELS: Partial<Record<PassiveKey, string>> = {
   chargesOnKill: "+{v} Flask Charges on Kill",
   lifeLeech: "{v}% of Hit damage dealt is recovered as Life",
   barrierLeech: "{v}% of Hit damage dealt is recovered as Barrier",
-  splash: "Hits splash {v}% of their damage onto monsters near the target",
-  execute: "Monsters you Hit below {v}% Life are slain outright",
+  splash: "Hits splash {v}% of their damage onto enemies near the target",
+  execute: "Enemies you Hit below {v}% Life are slain outright (players: 60% of that)",
   firstHitDmg: "{v}% more Damage against enemies on full Life",
   eliteDmg: "{v}% more Damage against Elites and Shrine Wardens",
   pvpDmg: "{v}% more Damage against Players",
@@ -274,7 +274,7 @@ const SPOKES: [key: string, from: string, specs: Spec[]][] = [
   ["int", "gate_int_0", [S({ barrier: 10 }), S({ mana: 10 }), N("Gathered Dusk", { barrierInc: 20, manaInc: 15, spirit: 20 }), S({ int: 6 })]],
   ["dexint", "start_mistrunner", [S({ evasion: 25 }), S({ barrier: 10 }), N("Drifting Haze", { evasionInc: 15, barrierInc: 15 }), S({ dex: 3, int: 3 })]],
   ["dex", "gate_dex_0", [S({ atkSpeed: 4 }), S({ evasion: 25 }), N("Hunter's Cadence", { atkSpeed: 10, moveInc: 3, spirit: 15 }), S({ dex: 6 })]],
-  ["strdex", "start_drifter", [S({ dmgInc: 6 }), S({ flaskRecInc: 10 }), N("Sellsword's Habit", { dmgInc: 8, atkSpeed: 5, flaskGainInc: 15 }), S({ str: 3, dex: 3 })]],
+  ["strdex", "start_drifter", [S({ dmgInc: 6 }), S({ life: 10 }), N("Sellsword's Habit", { dmgInc: 8, atkSpeed: 5, flaskGainInc: 15 }), S({ str: 3, dex: 3 })]],
   ["str", "start_reaver", [S({ life: 10 }), S({ dmgInc: 6 }), N("Heavy Hands", { dmgInc: 14, kbInc: 15, spirit: 15 }), S({ str: 6 })]],
   ["intstr", "start_bellwarden", [S({ armour: 20 }), S({ barrier: 10 }), N("Tempered Faith", { armourInc: 15, barrierInc: 15, resist: 6, spirit: 15 }), S({ int: 3, str: 3 })]],
 ];
@@ -289,31 +289,34 @@ function wing(id: string, from: string, deg: number, specs: Spec[]) {
   const e = polar(deg, 260);
   chain(id, from, null, f.x, f.y, f.x + e.x, f.y + e.y, specs);
 }
-wing("wing_gloamcaller", "start_gloamcaller", -118, [S({ barrier: 12 }), S({ barrierInc: 10 }), S({ resist: 6 }), N("Veilwright", { barrierInc: 30, barrier: 20 })]);
-wing("wing_lanternwright", "start_lanternwright", -62, [S({ mana: 10 }), S({ castSpeed: 4 }), S({ spellInc: 8 }), N("Ember Lexicon", { spellInc: 20, castSpeed: 8, manaRegenInc: 20 })]);
-wing("wing_mistrunner", "start_mistrunner", -30, [S({ evasion: 25 }), S({ regen: 0.5 }), S({ dodgeCdRed: 6 }), N("Tidal Footing", { evasion: 40, dodgeCdRed: 10, regen: 1 })]);
-wing("wing_harrier", "start_harrier", 4, [S({ atkSpeed: 4 }), S({ reach: 6 }), S({ dmgInc: 6 }), N("Long Shadow", { reach: 18, dmgInc: 10 })]);
-wing("wing_gutterblade", "start_gutterblade", 56, [S({ evasion: 25 }), S({ evasionInc: 12 }), S({ dodgeCdRed: 6 }), N("Shadow Footwork", { evasionInc: 30, dodgeCdRed: 12 })]);
-wing("wing_drifter", "start_drifter", 90, [S({ flaskGainInc: 10 }), S({ flaskRecInc: 10 }), S({ arcInc: 6 }), N("Hip Flask", { flaskRecInc: 25, flaskGainInc: 25, arcInc: 10 })]);
+// Each class gets an offence notable early on its wing and a defence / utility notable at the end,
+// so its archetype is a few points from the start instead of a trip through the hub.
+wing("wing_gloamcaller", "start_gloamcaller", -118, [S({ barrier: 12 }), S({ spellInc: 8 }), N("Dusk Litany", { spellInc: 20, castSpeed: 6 }), S({ barrierInc: 10 }), N("Veilwright", { barrierInc: 30, barrier: 20 })]);
+wing("wing_lanternwright", "start_lanternwright", -62, [S({ mana: 10 }), S({ castSpeed: 4 }), N("Ember Lexicon", { spellInc: 20, castSpeed: 8, manaRegenInc: 20 }), S({ spellInc: 8 }), N("Kindled Glass", { barrier: 25, fullBarrierDmg: 15 })]);
+wing("wing_mistrunner", "start_mistrunner", -30, [S({ evasion: 25 }), S({ atkSpeed: 4 }), N("Reed Forms", { dmgInc: 14, atkSpeed: 6 }), S({ dodgeCdRed: 6 }), N("Tidal Footing", { evasion: 40, dodgeCdRed: 10, regen: 1 })]);
+wing("wing_harrier", "start_harrier", 4, [S({ atkSpeed: 4 }), S({ dmgInc: 6 }), N("Fletcher's Rhythm", { atkSpeed: 10, dmgInc: 10 }), S({ evasion: 25 }), N("Long Shadow", { firstHitDmg: 20, reach: 12 })]);
+wing("wing_gutterblade", "start_gutterblade", 56, [S({ evasion: 25 }), S({ dmgInc: 6 }), N("Quick Knives", { atkSpeed: 10, firstHitDmg: 15 }), S({ evasionInc: 12 }), N("Shadow Footwork", { evasionInc: 30, dodgeCdRed: 12 })]);
+wing("wing_drifter", "start_drifter", 90, [S({ dmgInc: 6 }), S({ flaskRecInc: 10 }), N("Sellblade's Edge", { dmgInc: 14, arcInc: 10 }), S({ flaskGainInc: 10 }), N("Hip Flask", { flaskRecInc: 25, flaskGainInc: 25, life: 15 })]);
 wing("wing_reaver_0", "start_reaver", 126, [S({ armour: 20 }), S({ armourInc: 12 }), S({ life: 10 }), N("Tempered Hide", { armour: 50, armourInc: 25, life: 15 })]);
-wing("wing_reaver_1", "start_reaver", 174, [S({ life: 12 }), S({ lifeInc: 5 }), S({ regen: 0.6 }), N("Iron Gut", { lifeInc: 12, regen: 1.5 })]);
-wing("wing_bellwarden", "start_bellwarden", 210, [S({ armour: 20 }), S({ barrier: 12 }), S({ lifeInc: 4 }), N("Bronze Lungs", { armour: 40, barrier: 20, lifeInc: 6 })]);
+wing("wing_reaver_1", "start_reaver", 174, [S({ life: 12 }), S({ dmgInc: 6 }), N("Iron Gut", { lifeInc: 12, regen: 1.5 }), S({ dmgInc: 6 }), N("Pit Fury", { dmgInc: 18, atkSpeed: 6 })]);
+wing("wing_bellwarden", "start_bellwarden", 210, [S({ armour: 20 }), S({ dmgInc: 6 }), N("Ringing Blows", { dmgInc: 14, kbInc: 15, armour: 20 }), S({ barrier: 12 }), N("Bronze Lungs", { armour: 40, barrier: 20, lifeInc: 6 })]);
 
-// Keystones: hub -> path node -> keystone, one between each pair of spokes.
-function keystone(id: string, name: string, deg: number, mods: PassiveMods, desc: string[]) {
-  const a = polar(deg, 115);
-  const b = polar(deg, 210);
+// Keystones sit between two neighbouring spokes and hang off both spoke notables (not the hub), so
+// each one is close to the classes of its two regions and a long detour for everyone else.
+function keystone(id: string, name: string, deg: number, spokes: [string, string], mods: PassiveMods, desc: string[]) {
+  const a = polar(deg, 165);
+  const b = polar(deg, 235);
   add(`${id}_path`, "Balance", "small", a.x, a.y, { allAttr: 4 });
-  link("hub", `${id}_path`);
+  for (const k of spokes) link(`spoke_${k}_2`, `${id}_path`);
   add(id, name, "keystone", b.x, b.y, mods, { desc });
   link(`${id}_path`, id);
 }
-keystone("ks_hollow", "Hollow Vessel", -60, { lifeMore: -50, barrierMore: 100, barrierRechargeMore: 100 }, ["Your body is an empty jar; the dusk fills it."]);
-keystone("ks_phantom", "Phantom Step", 0, { dodgeCdRed: 35, iframes: 60, moveInc: 8, armourMore: -100, lifeMore: -15 }, ["Be where the blade is not."]);
-keystone("ks_carrion", "Carrion Feast", 60, { lifeOnKill: 8, flaskRecMore: -50, noRegen: 1 }, ["Only the fallen can mend you."]);
-keystone("ks_bloodfury", "Bloodfury Oath", 120, { dmgMore: 35, dmgTakenMore: 20, noRegen: 1 }, ["Swear it, and bleed for it."]);
-keystone("ks_stoneheart", "Stoneheart", 180, { noKnockback: 1, armourMore: 40, dodgeCdMore: 100 }, ["Nothing moves you. Not even you."]);
-keystone("ks_ashen", "Ashen Covenant", 240, { noBarrierRecharge: 1, barrierOnKill: 35, barrierMore: 50 }, ["Embers only rekindle from what burns."]);
+keystone("ks_hollow", "Hollow Vessel", -60, ["int", "dexint"], { lifeMore: -50, barrierMore: 100, barrierRechargeMore: 100 }, ["Your body is an empty jar; the dusk fills it."]);
+keystone("ks_phantom", "Phantom Step", 0, ["dexint", "dex"], { dodgeCdRed: 35, iframes: 60, moveInc: 8, armourMore: -100, lifeMore: -15 }, ["Be where the blade is not."]);
+keystone("ks_carrion", "Carrion Feast", 60, ["dex", "strdex"], { lifeOnKill: 8, lifeLeech: 3, flaskRecMore: -50, noRegen: 1 }, ["Only the fallen can mend you."]);
+keystone("ks_bloodfury", "Bloodfury Oath", 120, ["strdex", "str"], { dmgMore: 30, dmgTakenMore: 15, noRegen: 1 }, ["Swear it, and bleed for it."]);
+keystone("ks_stoneheart", "Stoneheart", 180, ["str", "intstr"], { noKnockback: 1, armourMore: 50, lifeMore: 10, dodgeCdMore: 100 }, ["Nothing moves you. Not even you."]);
+keystone("ks_ashen", "Ashen Covenant", 240, ["intstr", "int"], { noBarrierRecharge: 1, barrierOnKill: 35, barrierMore: 50 }, ["Embers only rekindle from what burns."]);
 
 // Jewel sockets (PoE2-style): one off the outer node of each spoke. Allocate the socket, then drag a
 // jewel from the inventory onto it; its modifiers apply while socketed (server/progression.ts).

@@ -93,6 +93,16 @@ function handConflict(p: ServerPlayer, slot: Slot, item: Item): { slot: Slot; it
   return null;
 }
 
+/** Auto-equip option: the item has an empty slot of its own and the hero meets its requirements. */
+export function canAutoEquip(p: ServerPlayer, item: Item): boolean {
+  if (isFlask(item)) return freeFlaskSlot(p) >= 0;
+  if (isCharm(item)) return freeCharmSlot(p) >= 0;
+  const slot = defaultSlotFor(item, p.equip);
+  if (!slot || p.equip[slot]) return false;
+  if (progEquipError(p, (item as Item).b)) return false;
+  return !handConflict(p, slot, item as Item);
+}
+
 function freeFlaskSlot(p: ServerPlayer): number {
   for (let i = 0; i < p.stats.flaskSlots; i++) if (!p.flasks[i]) return i;
   return -1;

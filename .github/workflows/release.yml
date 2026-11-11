@@ -20,7 +20,17 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx tsc --noEmit
-      - name: Build and publish installer
-        run: npm run release:win
+      - name: Build installer
+        run: npm run dist:win
+      # Upload in one step: electron-builder's own parallel uploads raced and dropped the .exe (v0.1.1).
+      - name: Publish release
+        shell: bash
+        run: >
+          gh release create "$GITHUB_REF_NAME"
+          --title "HnS Royale ${GITHUB_REF_NAME#v}"
+          --notes "Download the Setup .exe below and run it (SmartScreen: More info, then Run anyway). / Pobierz plik Setup .exe poniżej i uruchom (SmartScreen: Więcej informacji, potem Uruchom mimo to)."
+          "release/HnS-Royale-Setup-${GITHUB_REF_NAME#v}.exe"
+          "release/HnS-Royale-Setup-${GITHUB_REF_NAME#v}.exe.blockmap"
+          release/latest.yml
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

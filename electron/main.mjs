@@ -6,8 +6,9 @@
 //    Retro Arena: a UDP beacon (port 41237, once a second) so apps on the same network see each
 //    other's rooms, and a small WebSocket relay hub on the host PC so LAN guests join without internet.
 //  - HNS_PROFILE=<folder> runs a second copy with its own userData (two players on one PC).
-//  - Auto-update from GitHub Releases (electron-updater): checks on start, downloads in the
-//    background, offers a restart when ready, otherwise installs on quit. Offline / no release = silent.
+//  - Launcher: on start a small window checks GitHub Releases (electron-updater). A newer version
+//    is downloaded with a progress bar, installed silently and the game restarts on it, so players
+//    always launch the live version. Offline / GitHub down / no release: the game starts as is.
 //  - Closing the game window stops the server.
 import { app, BrowserWindow, dialog, ipcMain, Menu } from "electron";
 import updaterPkg from "electron-updater";
@@ -33,11 +34,10 @@ const STR = {
     fullscreen: "Pełny ekran",
     quit: "Zakończ",
     serverFail: "Nie udało się uruchomić serwera gry.",
-    updTitle: "Aktualizacja",
-    updReady: "Aktualizacja gotowa — uruchom ponownie",
-    updDetail: (v) => `Wersja ${v} została pobrana. Uruchom ponownie teraz albo zostanie zainstalowana przy zamknięciu gry.`,
-    restart: "Uruchom ponownie",
-    later: "Później",
+    lChecking: "Sprawdzanie aktualizacji…",
+    lDownloading: (v) => `Pobieranie wersji ${v}…`,
+    lInstalling: "Instalowanie aktualizacji…",
+    lStarting: "Uruchamianie…",
   },
   en: {
     view: "View",
@@ -45,11 +45,10 @@ const STR = {
     fullscreen: "Full screen",
     quit: "Quit",
     serverFail: "Could not start the game server.",
-    updTitle: "Update",
-    updReady: "Update ready — restart",
-    updDetail: (v) => `Version ${v} has been downloaded. Restart now, or it installs when you close the game.`,
-    restart: "Restart now",
-    later: "Later",
+    lChecking: "Checking for updates…",
+    lDownloading: (v) => `Downloading version ${v}…`,
+    lInstalling: "Installing update…",
+    lStarting: "Starting…",
   },
 };
 let lang = "en";
@@ -184,32 +183,68 @@ ipcMain.handle("lan:hub-start", async () => {
 });
 ipcMain.handle("lan:hub-stop", async () => stopHub());
 
-// ---- auto-update --------------------------------------------------------------------------
+// ---- launcher: update to the live version before the game starts ------------------------
 
-function checkUpdates() {
-  if (!app.isPackaged) return;
-  autoUpdater.logger = null;
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
-  autoUpdater.on("error", () => {}); // offline, no release yet, GitHub down: play on, say nothing
-  autoUpdater.on("update-downloaded", async (info) => {
-    const opts = {
-      type: "info",
-      title: T.updTitle,
-      message: T.updReady,
-      detail: T.updDetail(info?.version ?? ""),
-      buttons: [T.restart, T.later],
-      defaultId: 0,
-      cancelId: 1,
-      noLink: true,
+const LAUNCHER_HTML = `<!doctype html><meta charset="utf-8"><style>
+html,body{margin:0;height:100%;background:#0b0a0c;color:#d8ccb0;font:15px Georgia,serif;user-select:none;-webkit-app-region:drag}
+body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;border:1px solid #3c3842;box-sizing:border-box}
+h1{margin:0;font-size:30px;letter-spacing:3px;color:#e0a868;font-weight:normal}
+#bar{width:300px;height:6px;background:#1d1a20;border:1px solid #3c3842}
+#fill{height:100%;width:0;background:linear-gradient(90deg,#7a1810,#ff8a2a);transition:width .2s}
+#msg{color:#8a7f6c;font-size:13px}#ver{position:fixed;right:10px;bottom:6px;color:#5a5248;font-size:11px}
+</style><h1>HnS Royale</h1><div id="bar"><div id="fill"></div></div><div id="msg"></div><div id="ver"></div>`;
+
+/** Launcher window: brings the install up to the live release, then resolves so the game starts.
+ *  When an update is found it installs silently and restarts the app instead (never resolves). */
+function runLauncher() {
+  return new Promise((resolve) => {
+    if (!app.isPackaged) return resolve(null);
+    const win = new BrowserWindow({ width: 460, height: 240, frame: false, resizable: false, show: false, backgroundColor: "#0b0a0c", title: "HnS Royale" });
+    win.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(LAUNCHER_HTML));
+    const js = (code) => (win.isDestroyed() ? Promise.resolve() : win.webContents.executeJavaScript(code).catch(() => {}));
+    const set = (msg, pct) => js(`msg.textContent=${JSON.stringify(msg)};` + (pct == null ? "" : `fill.style.width="${Math.min(100, pct)}%";`));
+    let shown = false;
+    let pending = null;
+    win.once("ready-to-show", () => {
+      win.show();
+      shown = true;
+      js(`ver.textContent=${JSON.stringify("v" + app.getVersion())}`);
+      set(...(pending ?? [T.lChecking, 5]));
+    });
+    const show = (msg, pct) => (shown ? set(msg, pct) : (pending = [msg, pct]));
+    let done = false;
+    const start = () => {
+      if (done) return;
+      done = true;
+      show(T.lStarting, 100);
+      // the caller closes the launcher once the game window exists (no window = app quits)
+      setTimeout(() => resolve(win), 250);
     };
-    const { response } = mainWin && !mainWin.isDestroyed() ? await dialog.showMessageBox(mainWin, opts) : await dialog.showMessageBox(opts);
-    if (response === 0) {
-      stopAll();
-      autoUpdater.quitAndInstall();
-    }
+    let ver = "";
+    autoUpdater.logger = null;
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+    // a check that hangs (captive portal, slow DNS) must not block playing
+    const hang = setTimeout(start, 10000);
+    autoUpdater.on("error", start); // offline, no release, GitHub down: play the installed version
+    autoUpdater.on("update-not-available", start);
+    autoUpdater.on("update-available", (info) => {
+      clearTimeout(hang);
+      ver = info?.version ?? "";
+      show(T.lDownloading(ver), 8);
+    });
+    autoUpdater.on("download-progress", (p) => show(`${T.lDownloading(ver)} ${Math.round(p.percent)}%`, 8 + p.percent * 0.9));
+    autoUpdater.on("update-downloaded", () => {
+      if (done) return; // the game already started (download error path): installs when it closes
+      done = true;
+      show(T.lInstalling, 100);
+      setTimeout(() => {
+        stopAll();
+        autoUpdater.quitAndInstall(true, true); // silent install, then start the new version
+      }, 600);
+    });
+    autoUpdater.checkForUpdates().catch(start);
   });
-  autoUpdater.checkForUpdates().catch(() => {});
 }
 
 // ---- app ----------------------------------------------------------------------------------
@@ -245,9 +280,12 @@ if (!app.requestSingleInstanceLock()) {
     lang = systemLang();
     T = STR[lang];
     buildMenu();
+    const launcher = await runLauncher();
+    const closeLauncher = () => launcher && !launcher.isDestroyed() && launcher.destroy();
     try {
       await startGameServer();
     } catch (e) {
+      closeLauncher();
       dialog.showErrorBox("HnS Royale", `${T.serverFail}\n\n${e?.message ?? e}`);
       app.quit();
       return;
@@ -261,6 +299,7 @@ if (!app.requestSingleInstanceLock()) {
       backgroundColor: "#050405",
       webPreferences: { preload: join(here, "preload.cjs"), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false },
     });
+    closeLauncher();
     mainWin.on("page-title-updated", (e) => e.preventDefault());
     mainWin.loadURL(`http://localhost:${port}/`);
     mainWin.webContents.on("did-finish-load", syncLangFromGame);
@@ -269,7 +308,6 @@ if (!app.requestSingleInstanceLock()) {
       mainWin = null;
       app.quit(); // closing the game closes everything
     });
-    checkUpdates();
   });
 
   app.on("window-all-closed", () => app.quit());

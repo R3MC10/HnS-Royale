@@ -1,6 +1,6 @@
 {
   "name": "hns-royale",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "2D online hack-and-slash royale (browser client + Node server)",
   "author": "HnS Royale",

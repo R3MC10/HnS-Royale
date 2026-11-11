@@ -22,11 +22,16 @@ jobs:
       - run: npx tsc --noEmit
       - name: Build installer
         run: npm run dist:win
+      # A copy with a fixed name, so .../releases/latest/download/HnS-Royale-Setup.exe is always the live version.
+      - name: Fixed-name installer
+        shell: bash
+        run: cp "release/HnS-Royale-Setup-${GITHUB_REF_NAME#v}.exe" release/HnS-Royale-Setup.exe
       # Upload in one step: electron-builder's own parallel uploads raced and dropped the .exe (v0.1.1).
       - name: Publish release
         shell: bash
         run: >
           gh release create "$GITHUB_REF_NAME"
+          release/HnS-Royale-Setup.exe
           --title "HnS Royale ${GITHUB_REF_NAME#v}"
           --notes "Download the Setup .exe below and run it (SmartScreen: More info, then Run anyway). / Pobierz plik Setup .exe poniżej i uruchom (SmartScreen: Więcej informacji, potem Uruchom mimo to)."
           "release/HnS-Royale-Setup-${GITHUB_REF_NAME#v}.exe"

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HnS Royale - Graphics Showcase</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #07070a; color: #d8d0c0; font: 13px/1.4 Georgia, serif; }
+    #game { display: block; position: fixed; inset: 0; }
+    #bar { position: fixed; left: 50%; top: 8px; transform: translateX(-50%); display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; z-index: 2; max-width: calc(100vw - 16px); }
+    #bar.hide { display: none; }
+    #bar button { font: 600 12px Georgia, serif; color: #e8d8b0; background: rgba(20,14,10,0.85); border: 1px solid #5a4630; padding: 4px 10px; cursor: pointer; border-radius: 3px; }
+    #bar button.on { background: #6b4a22; border-color: #ffd88a; color: #fff2d0; }
+    #hint { position: fixed; right: 10px; bottom: 6px; color: #8a8070; font-size: 11px; z-index: 2; }
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <div id="bar"></div>
+  <div id="hint">1-6 scenes · B biome · Space pause · H hide buttons</div>
+  <script src="showcase.js"></script>
+</body>
+</html>

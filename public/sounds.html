@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HnS Royale - Sounds</title>
+  <style>
+    html, body { margin: 0; background: #0b0a0c; color: #d8d0c0; font: 13px/1.4 "Courier New", Consolas, monospace; }
+    header { padding: 8px 12px; display: flex; gap: 16px; align-items: center; border-bottom: 2px solid #3a2e20; }
+    header b { color: #ffe9a8; letter-spacing: 1px; }
+    #root { padding: 8px 12px; }
+    .ctl { margin: 6px 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    section { margin: 10px 0; }
+    h3 { margin: 4px 0; color: #c9a86a; text-transform: uppercase; font-size: 12px; letter-spacing: 1px; }
+    button { background: #1c1714; color: #d8d0c0; border: 1px solid #4a3a28; padding: 4px 8px; margin: 2px; font: inherit; cursor: pointer; }
+    button:hover { background: #2a221c; }
+    button.on { border-color: #ffd27a; color: #ffe9a8; }
+    button.synth { color: #8a8478; border-style: dashed; }
+    a { color: #9bd7f5; }
+  </style>
+</head>
+<body>
+  <header>
+    <b>SOUND REVIEW</b>
+    <span>Generated files from /audio (variation count in brackets); ids marked (synth) fall back to the built-in synthesiser. Click any sound; volumes follow the game's audio settings.</span>
+    <a href="/">Back to the game</a>
+  </header>
+  <div id="root"></div>
+  <script src="sounds.js"></script>
+</body>
+</html>

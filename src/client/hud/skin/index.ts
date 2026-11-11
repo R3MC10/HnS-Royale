@@ -1,0 +1,53 @@
+// HUD skin kit (skin foundation): import everything HUD packages need from "./skin".
+// Smooth native-resolution text, painted frame primitives with procedural fallbacks, and the HUD art loader.
+export {
+  HUD_ART,
+  hudArt,
+  hudIcon,
+  hudArtStatus,
+  hudArtVersion,
+  preloadHudArt,
+  setHudArtEnabled,
+  type HudArt,
+  type HudArtDef,
+} from "./assets";
+export { skinText, skinTextW, skinTitle, skinFonts, refreshSkinFonts, type SkinFace, type SkinTextOpts } from "./text";
+export {
+  SKIN,
+  drawSkinPanel,
+  drawSkinSlot,
+  drawSkinGlobe,
+  drawSkinGlobeHolder,
+  globeRimWidth,
+  drawSkinBar,
+  drawSkinBarFrame,
+  drawSkinStrip,
+  drawSkinFlask,
+  drawSkinButton,
+  drawSkinTooltip,
+  drawSkinTooltipAt,
+  drawSkinLabel,
+  type SlotState,
+  type ButtonState,
+  type PanelOpts,
+  type SlotOpts,
+  type GlobeOpts,
+  type BarOpts,
+  type FlaskOpts,
+  type LabelOpts,
+} from "./frames";
+export {
+  devScale,
+  stoneTexture,
+  grainTexture,
+  texPattern,
+  fillTexture,
+  chamferPath,
+  roundRectPath,
+  bevel,
+  rivet,
+  rgba,
+  shade,
+  drawNine,
+  drawAnchored,
+} from "./paint";

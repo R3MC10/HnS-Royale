@@ -1,0 +1,93 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'" />
+<title>Play with friends</title>
+<style>
+  body { margin: 0; padding: 20px 24px; background: #0b0807; color: #e8dcc8; font: 14px/1.45 "Segoe UI", system-ui, sans-serif; user-select: none; }
+  h1 { margin: 0 0 10px; font-size: 18px; color: #f0c674; font-weight: 600; }
+  p { margin: 6px 0; color: #c9bba3; }
+  .row { display: flex; gap: 8px; margin: 14px 0 10px; }
+  input { flex: 1; min-width: 0; padding: 8px 10px; background: #18110e; color: #fff; border: 1px solid #5a4330; border-radius: 4px; font: 14px Consolas, monospace; user-select: text; }
+  button { padding: 8px 14px; background: #7a3b1c; color: #fff; border: 1px solid #b0612f; border-radius: 4px; font: inherit; cursor: pointer; }
+  button:hover { background: #95492a; }
+  .err { color: #ff8c7a; }
+  .hidden { display: none; }
+  small { color: #8f8270; }
+</style>
+</head>
+<body>
+<h1 id="title"></h1>
+<p id="status"></p>
+<div class="row hidden" id="linkRow"><input id="link" readonly /><button id="copy"></button></div>
+<div class="row hidden" id="retryRow"><button id="retry"></button></div>
+<p id="steps" class="hidden"></p>
+<small id="local"></small>
+<script>
+  const q = new URLSearchParams(location.search);
+  const D = {
+    pl: {
+        title: "Graj ze znajomymi",
+        starting: "Otwieram link internetowy…",
+        downloading: "Pierwsze uruchomienie: pobieram narzędzie tunelu Cloudflare (ok. 60 MB)…",
+        ready: "Wyślij ten link znajomym (już jest w schowku). Zmienia się przy każdym uruchomieniu gry.",
+        error: "Nie udało się otworzyć linku internetowego:",
+        copy: "Kopiuj",
+        copied: "Skopiowano",
+        retry: "Spróbuj ponownie",
+        steps: "1. W grze kliknij Załóż grę.  2. Znajomi otwierają link w przeglądarce lub w aplikacji i klikają Przeglądaj gry.  3. Dodaj boty, jeśli chcesz, i rozpocznij mecz.",
+        local: "Działa, dopóki gra jest otwarta. Ta sama sieć Wi-Fi: http://<IP tego komputera>:",
+      },
+    en: {
+        title: "Play with friends",
+        starting: "Opening the internet link…",
+        downloading: "First run: downloading the Cloudflare tunnel tool (about 60 MB)…",
+        ready: "Send this link to your friends (it is already on your clipboard). It changes every time you start the game.",
+        error: "Could not open the internet link:",
+        copy: "Copy",
+        copied: "Copied",
+        retry: "Try again",
+        steps: "1. In the game, click Host a game.  2. Friends open the link in a browser or the app and click Browse games.  3. Add bots if you like, then begin the match.",
+        local: "Works while the game is open. Same Wi-Fi: http://<this PC's IP address>:",
+      },
+  };
+  let S = D.en;
+  let last = { phase: "idle" };
+  const $ = (id) => document.getElementById(id);
+  const port = new URL(q.get("local") || "http://localhost:3001").port || "80";
+  function render() {
+    const s = last;
+    const st = $("status");
+    st.className = s.phase === "error" ? "err" : "";
+    st.textContent = s.phase === "error" ? `${S.error} ${s.error}` : S[s.phase] || S.starting;
+    $("linkRow").classList.toggle("hidden", s.phase !== "ready");
+    $("steps").classList.toggle("hidden", s.phase !== "ready");
+    $("retryRow").classList.toggle("hidden", s.phase !== "error");
+    if (s.url) $("link").value = s.url;
+  }
+  function setLang(l) {
+    S = D[l] || D.en;
+    document.documentElement.lang = l === "pl" ? "pl" : "en";
+    document.title = $("title").textContent = S.title;
+    $("copy").textContent = S.copy;
+    $("retry").textContent = S.retry;
+    $("steps").textContent = S.steps;
+    $("local").textContent = S.local + port;
+    render();
+  }
+  $("copy").onclick = () => {
+    window.hns.copy();
+    $("copy").textContent = S.copied;
+    setTimeout(() => ($("copy").textContent = S.copy), 1500);
+  };
+  $("retry").onclick = () => window.hns.retry();
+  window.hns.onState((s) => {
+    last = s;
+    render();
+  });
+  window.hns.onLang(setLang);
+  setLang(q.get("lang"));
+</script>
+</body>
+</html>

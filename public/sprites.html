@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HnS Royale - Sprites</title>
+  <style>
+    html, body { margin: 0; background: #0b0a0c; color: #d8d0c0; font: 13px/1.4 "Courier New", Consolas, monospace; }
+    header { padding: 8px 12px; display: flex; gap: 16px; align-items: center; border-bottom: 2px solid #3a2e20; }
+    header b { color: #ffe9a8; letter-spacing: 1px; }
+    #sheet { display: block; image-rendering: pixelated; cursor: pointer; }
+    a { color: #9bd7f5; }
+  </style>
+</head>
+<body>
+  <header>
+    <b>SPRITE REVIEW</b>
+    <label>Zoom <select id="zoom"><option>1</option><option selected>2</option><option>3</option></select></label>
+    <label><input type="checkbox" id="pause" /> Pause</label>
+    <span>Click the sheet to cycle gear sets.</span>
+    <a href="/">Back to the game</a>
+  </header>
+  <canvas id="sheet"></canvas>
+  <script src="sprites.js"></script>
+</body>
+</html>

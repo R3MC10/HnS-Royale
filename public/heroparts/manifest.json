@@ -1,0 +1,1150 @@
+{
+ "version": 1,
+ "ppu": 7.2023,
+ "pxPerRigZ": 9,
+ "root": "heroparts/",
+ "generated": "2026-11-10T21:02:58.245Z",
+ "parts": {
+  "base.base.head": {
+   "slot": "base",
+   "look": "base",
+   "seg": "head",
+   "mode": "rigid",
+   "up": true,
+   "views": {
+    "S": {
+     "src": "base/base/head_S.png",
+     "w": 63,
+     "h": 77,
+     "ax": 29.2,
+     "ay": 70.8,
+     "len": 0
+    },
+    "E": {
+     "src": "base/base/head_E.png",
+     "w": 58,
+     "h": 77,
+     "ax": 19.5,
+     "ay": 70.8,
+     "len": 0
+    },
+    "N": {
+     "src": "base/base/head_N.png",
+     "w": 82,
+     "h": 77,
+     "ax": 37.5,
+     "ay": 70.8,
+     "len": 0
+    }
+   }
+  },
+  "base.base.torso": {
+   "slot": "base",
+   "look": "base",
+   "seg": "torso",
+   "mode": "stretch",
+   "up": false,
+   "views": {
+    "S": {
+     "src": "base/base/torso_S.png",
+     "w": 73,
+     "h": 140,
+     "ax": 36.7,
+     "ay": 11.2,
+     "len": 117.6
+    },
+    "E": {
+     "src": "base/base/torso_E.png",
+     "w": 62,
+     "h": 140,
+     "ax": 39.8,
+     "ay": 11.2,
+     "len": 117.6
+    },
+    "N": {
+     "src": "base/base/torso_N.png",
+     "w": 67,
+     "h": 140,
+     "ax": 34.3,
+     "ay": 11.2,
+     "len": 117.6
+    }
+   }
+  },
+  "base.base.upperarm": {
+   "slot": "base",
+   "look": "base",
+   "seg": "upperarm",
+   "mode": "stretch",
+   "up": false,
+   "views": {
+    "S": {
+     "src": "base/base/upperarm_S.png",
+     "w": 37,
+     "h": 77,
+     "ax": 17.4,
+     "ay": 10.4,
+     "len": 58.1
+    },
+    "E": {
+     "src": "base/base/upperarm_E.png",
+     "w": 36,
+     "h": 77,
+     "ax": 17.2,
+     "ay": 10.4,
+     "len": 58.1
+    },
+    "N": {
+     "src": "base/base/upperarm_N.png",
+     "w": 37,
+     "h": 77,
+     "ax": 17,
+     "ay": 10.4,
+     "len": 58.1
+    }
+   }
+  },
+  "base.base.forearm": {
+   "slot": "base",
+   "look": "base",
+   "seg": "forearm",
+   "mode": "stretch",
+   "up": false,
+   "views": {
+    "S": {
+     "src": "base/base/forearm_S.png",
+     "w": 35,
+     "h": 70,
+     "ax": 22.3,
+     "ay": 8.5,
+     "len": 55.1
+    },
+    "E": {
+     "src": "base/base/forearm_E.png",
+     "w": 30,
+     "h": 70,
+     "ax": 17.3,
+     "ay": 8.5,
+     "len": 55.1
+    },
+    "N": {
+     "src": "base/base/forearm_N.png",
+     "w": 33,
+     "h": 70,
+     "ax": 20.2,
+     "ay": 8.5,
+     "len": 55.1
+    }
+   }
+  },
+  "base.base.hand": {
+   "slot": "base",
+   "look": "base",
+   "seg": "hand",
+   "mode": "rigid",
+   "up": false,
+   "views": {
+    "S": {
+     "src": "base/base/hand_S.png",
+     "w": 33,
+     "h": 31,
+     "ax": 17.1,
+     "ay": 5.7,
+     "len": 0
+    },
+    "E": {
+     "src": "base/base/hand_E.png",
+     "w": 28,
+     "h": 31,
+     "ax": 14.6,
+     "ay": 5.7,
+     "len": 0
+    },
+    "N": {
+     "src": "base/base/hand_N.png",
+     "w": 32,
+     "h": 31,
+     "ax": 16.4,
+     "ay": 5.7,
+     "len": 0
+    }
+   }
+  },
+  "base.base.hips": {
+   "slot": "base",
+   "look": "base",
+   "seg": "hips",
+   "mode": "rigid",
+   "up": false,
+   "views": {
+    "S": {
+     "src": "base/base/hips_S.png",
+     "w": 43,
+     "h": 54,
+     "ax": 20.9,
+     "ay": 16.2,
+     "len": 0
+    },
+    "E": {
+     "src": "base/base/hips_E.png",
+     "w": 29,
+     "h": 54,
+     "ax": 14.8,
+     "ay": 16.2,
+     "len": 0
+    },
+    "N": {
+     "src": "base/base/hips_N.png",
+     "w": 33,
+     "h": 54,
+     "ax": 15.3,
+     "ay": 16.2,
+     "len": 0
+    }
+   }
+  },
+  "base.base.thigh": {
+   "slot": "base",
+   "look": "base",
+   "seg": "thigh",
+   "mode": "stretch",
+   "up": false,
+   "views": {
+    "S": {
+     "src": "base/base/thigh_S.png",
+     "w": 51,
+     "h": 87,
+     "ax": 25.5,
+     "ay": 8.3,
+     "len": 70.1
+    },
+    "E": {
+     "src": "base/base/thigh_E.png",
+     "w": 43,
+     "h": 87,
+     "ax": 21.4,
+     "ay": 8.3,
+     "len": 70.1
+    },
+    "N": {
+     "src": "base/base/thigh_N.png",
+     "w": 50,
+     "h": 87,
+     "ax": 24.6,
+     "ay": 8.3,
+     "len": 70.1
+    }
+   }
+  },
+  "base.base.shin": {
+   "slot": "base",
+   "look": "base",
+   "seg": "shin",
+   "mode": "stretch",
+   "up": false,
+   "views": {
+    "S": {
+     "src": "base/base/shin_S.png",
+     "w": 34,
+     "h": 80,
+     "ax": 16.8,
+     "ay": 8.5,
+     "len": 65.1
+    },
+    "E": {
+     "src": "base/base/shin_E.png",
+     "w": 33,
+     "h": 80,
+     "ax": 16.3,
+     "ay": 8.5,
+     "len": 65.1
+    },
+    "N": {
+     "src": "base/base/shin_N.png",
+     "w": 37,
+     "h": 80,
+     "ax": 17.9,
+     "ay": 8.5,
+     "len": 65.1
+    }
+   }
+  },
+  "base.base.foot": {
+   "slot": "base",
+   "look": "base",
+   "seg": "foot",
+   "mode": "rigid",
+   "up": false,
+   "views": {
+    "S": {
+     "src": "base/base/foot_S.png",
+     "w": 23,
+     "h": 33,
+     "ax": 10.8,
+     "ay": 9.6,
+     "len": 0
+    },
+    "E": {
+     "src": "base/base/foot_E.png",
+     "w": 31,
+     "h": 33,
+     "ax": 17.7,
+     "ay": 9.6,
+     "len": 0
+    },
+    "N": {
+     "src": "base/base/foot_N.png",
+     "w": 23,
+     "h": 33,
+     "ax": 10.7,
+     "ay": 9.6,
+     "len": 0
+    }
+   }
+  },
+  "helmet.helm.head": {
+   "slot": "helmet",
+   "look": "helm",
+   "seg": "head",
+   "mode": "rigid",
+   "up": true,
+   "views": {
+    "S": {
+     "src": "helmet/helm/head_S.png",
+     "w": 87,
+     "h": 86,
+     "ax": 39.8,
+     "ay": 77.4,
+     "len": 0
+    },
+    "E": {
+     "src": "helmet/helm/head_E.png",
+     "w": 78,
+     "h": 86,
+     "ax": 25.6,
+     "ay": 77.4,
+     "len": 0
+    },
+    "N": {
+     "src": "helmet/helm/head_N.png",
+     "w": 94,
+     "h": 86,
+     "ax": 44.5,
+     "ay": 77.4,
+     "len": 0
+    }
+   }
+  },
+  "helmet.hood.head": {
+   "slot": "helmet",
+   "look": "hood",
+   "seg": "head",
+   "mode": "rigid",
+   "up": true,
+   "views": {
+    "S": {
+     "src": "helmet/hood/head_S.png",
+     "w": 94,
+     "h": 94,
+     "ax": 46.6,
+     "ay": 84.6,
+     "len": 0
+    },
+    "E": {
+     "src": "helmet/hood/head_E.png",
+     "w": 73,
+     "h": 94,
+     "ax": 36.6,
+     "ay": 84.6,
+     "len": 0
+    },
+    "N": {
+     "src": "helmet/hood/head_N.png",
+     "w": 90,
+     "h": 94,
+     "ax": 43.8,
+     "ay": 84.6,
+     "len": 0
+    }
+   }
+  },
+  "helmet.circlet.head": {
+   "slot": "helmet",
+   "look": "circlet",
+   "seg": "head",
+   "mode": "rigid",
+   "up": true,
+   "views": {
+    "S": {
+     "src": "helmet/circlet/head_S.png",
+     "w": 88,
+     "h": 79,
+     "ax": 43,
+     "ay": 71.1,
+     "len": 0
+    },
+    "E": {
+     "src": "helmet/circlet/head_E.png",
+     "w": 55,
+     "h": 79,
+     "ax": 26.9,
+     "ay": 71.1,
+     "len": 0
+    },
+    "N": {
+     "src": "helmet/circlet/head_N.png",
+     "w": 90,
+     "h": 77,
+     "ax": 44.7,
+     "ay": 69.3,
+     "len": 0
+    }
+   }
+  },
+  "body.plate.torso": {
+   "slot": "body",
+   "look": "plate",
+   "seg": "torso",
+   "mode": "stretch",
+   "up": false,
+   "views": {
+    "S": {
+     "src": "body/plate/torso_S.png",
+     "w": 137,
+     "h": 144,
+     "ax": 66.5,
+     "ay": 11.5,
+     "len": 121
+    },
+    "E": {
+     "src": "body/plate/torso_E.png",
+     "w": 107,
+     "h": 144,
+     "ax": 50.2,
+     "ay": 11.5,
+     "len": 121
+    },
+    "N": {
+     "src": "body/plate/torso_N.png",
+     "w": 104,
+     "h": 144,
+     "ax": 46.2,
+     "ay": 11.5,
+     "len": 121
+    }
+   }
+  },
+  "body.plate.upperarm": {
+   "slot": "body",
+   "look": "plate",
+   "seg": "upperarm",
+   "mode": "stretch",
+   "up": false,
+   "views": {
+    "S": {
+     "src": "body/plate/upperarm_S.png",
+     "w": 51,
+     "h": 77,
+     "ax": 25.1,
+     "ay": 10.4,
+     "len": 58.1
+    },
+    "E": {
+     "src": "body/plate/upperarm_E.png",
+     "w": 50,
+     "h": 77,
+     "ax": 25.1,
+     "ay": 10.4,
+     "len": 58.1
+    },
+    "N": {
+     "src": "body/plate/upperarm_N.png",
+     "w": 48,
+     "h": 77,
+     "ax": 24,
+     "ay": 10.4,
+     "len": 58.1
+    }
+   }
+  },
+  "body.plate.forearm": {
+   "slot": "body",
+   "look": "plate",
+   "seg": "forearm",
+   "mode": "stretch",
+   "up": false,
+   "views": {
+    "S": {
+     "src": "body/plate/forearm_S.png",
+     "w": 38,
+     "h": 70,
+     "ax": 17.6,
+     "ay": 8.5,
+     "len": 55.1
+    },
+    "E": {
+     "src": "body/plate/forearm_E.png",
+     "w": 38,
+     "h": 70,
+     "ax": 19.5,
+     "ay": 8.5,
+     "len": 55.1
+    },
+    "N": {
+     "src": "body/plate/forearm_N.png",
+     "w": 39,
+     "h": 70,
+     "ax": 19,
+     "ay": 8.5,
+     "len": 55.1
+    }
+   }
+  },
+  "body.plate.hips": {
+   "slot": "body",
+   "look": "plate",
+   "seg": "hips",
+   "mode": "rigid",
+   "up": false,
+   "views": {
+    "S": {
+     "src": "body/plate/hips_S.png",
+     "w": 39,
+     "h": 68,
+     "ax": 18.7,
+     "ay": 12.2,
+     "len": 0
+    },
+    "E": {
+     "src": "body/plate/hips_E.png",
+     "w": 38,
+     "h": 68,
+     "ax": 19.4,
+     "ay": 12.2,
+     "len": 0
+    },
+    "N": {
+     "src": "body/plate/hips_N.png",
+     "w": 36,
+     "h": 68,
+     "ax": 17.8,
+     "ay": 12.2,
+     "len": 0
+    }
+   }
+  },
+  "body.leather.torso": {
+   "slot": "body",
+   "look": "leather",
+   "seg": "torso",
+   "mode": "stretch",
+   "up": false,
+   "views": {
+    "S": {
+     "src": "body/leather/torso_S.png",
+     "w": 93,
+     "h": 140,
+     "ax": 45.2,
+     "ay": 11.2,
+     "len": 117.6
+    },
+    "E": {
+     "src": "body/leather/torso_E.png",
+     "w": 76,
+     "h": 140,
+     "ax": 36.3,
+     "ay": 11.2,
+     "len": 117.6
+    },
+    "N": {
+     "src": "body/leather/torso_N.png",
+     "w": 79,
+     "h": 140,
+     "ax": 38.8,
+     "ay": 11.2,
+     "len": 117.6
+    }
+   }
+  },
+  "body.leather.upperarm": {
+   "slot": "body",
+   "look": "leather",
+   "seg": "upperarm",
+   "mode": "stretch",
+   "up": false,
+   "views": {
+    "S": {
+     "src": "body/leather/upperarm_S.png",
+     "w": 38,
+     "h": 77,
+     "ax": 19.5,
+     "ay": 10.4,
+     "len": 58.1
+    },
+    "E": {
+     "src": "body/leather/upperarm_E.png",
+     "w": 51,
+     "h": 77,
+     "ax": 29,
+     "ay": 10.4,
+     "len": 58.1
+    },
+    "N": {
+     "src": "body/leather/upperarm_N.png",
+     "w": 45,
+     "h": 77,
+     "ax": 27,
+     "ay": 10.4,
+     "len": 58.1
+    }
+   }
+  },
+  "body.leather.forearm": {
+   "slot": "body",
+   "look": "leather",
+   "seg": "forearm",
+   "mode": "stretch",
+   "up": false,
+   "views": {
+    "S": {
+     "src": "body/leather/forearm_S.png",
+     "w": 36,
+     "h": 70,
+     "ax": 18,
+     "ay": 8.5,
+     "len": 55.1
+    },
+    "E": {
+     "src": "body/leather/forearm_E.png",
+     "w": 43,
+     "h": 70,
+     "ax": 20.4,
+     "ay": 8.5,
+     "len": 55.1
+    },
+    "N": {
+     "src": "body/leather/forearm_N.png",
+     "w": 39,
+     "h": 70,
+     "ax": 18.7,
+     "ay": 8.5,
+     "len": 55.1
+    }
+   }
+  },
+  "body.leather.hips": {
+   "slot": "body",
+   "look": "leather",
+   "seg": "hips",
+   "mode": "rigid",
+   "up": false,
+   "views": {
+    "S": {
+     "src": "body/leather/hips_S.png",
+     "w": 46,
+     "h": 63,
+     "ax": 22.5,
+     "ay": 11.3,
+     "len": 0
+    },
+    "E": {
+     "src": "body/leather/hips_E.png",
+     "w": 36,
+     "h": 63,
+     "ax": 17.5,
+     "ay": 11.3,
+     "len": 0
+    },
+    "N": {
+     "src": "body/leather/hips_N.png",
+     "w": 42,
+     "h": 63,
+     "ax": 20.5,
+     "ay": 11.3,
+     "len": 0
+    }
+   }
+  },
+  "body.robe.torso": {
+   "slot": "body",
+   "look": "robe",
+   "seg": "torso",
+   "mode": "stretch",
+   "up": false,
+   "views": {
+    "S": {
+     "src": "body/robe/torso_S.png",
+     "w": 100,
+     "h": 140,
+     "ax": 50.5,
+     "ay": 11.2,
+     "len": 117.6
+    },
+    "E": {
+     "src": "body/robe/torso_E.png",
+     "w": 72,
+     "h": 140,
+     "ax": 31,
+     "ay": 11.2,
+     "len": 117.6
+    },
+    "N": {
+     "src": "body/robe/torso_N.png",
+     "w": 82,
+     "h": 140,
+     "ax": 41.1,
+     "ay": 11.2,
+     "len": 117.6
+    }
+   }
+  },
+  "body.robe.upperarm": {
+   "slot": "body",
+   "look": "robe",
+   "seg": "upperarm",
+   "mode": "stretch",
+   "up": false,
+   "views": {
+    "S": {
+     "src": "body/robe/upperarm_S.png",
+     "w": 64,
+     "h": 77,
+     "ax": 15.5,
+     "ay": 10.4,
+     "len": 58.1
+    },
+    "E": {
+     "src": "body/robe/upperarm_E.png",
+     "w": 93,
+     "h": 77,
+     "ax": 50.5,
+     "ay": 10.4,
+     "len": 58.1
+    },
+    "N": {
+     "src": "body/robe/upperarm_N.png",
+     "w": 61,
+     "h": 77,
+     "ax": 19.5,
+     "ay": 10.4,
+     "len": 58.1
+    }
+   }
+  },
+  "body.robe.forearm": {
+   "slot": "body",
+   "look": "robe",
+   "seg": "forearm",
+   "mode": "stretch",
+   "up": false,
+   "views": {
+    "S": {
+     "src": "body/robe/forearm_S.png",
+     "w": 52,
+     "h": 70,
+     "ax": 24,
+     "ay": 8.5,
+     "len": 55.1
+    },
+    "E": {
+     "src": "body/robe/forearm_E.png",
+     "w": 86,
+     "h": 70,
+     "ax": 37.3,
+     "ay": 8.5,
+     "len": 55.1
+    },
+    "N": {
+     "src": "body/robe/forearm_N.png",
+     "w": 46,
+     "h": 70,
+     "ax": 16,
+     "ay": 8.5,
+     "len": 55.1
+    }
+   }
+  },
+  "body.robe.hips": {
+   "slot": "body",
+   "look": "robe",
+   "seg": "hips",
+   "mode": "rigid",
+   "up": false,
+   "views": {
+    "S": {
+     "src": "body/robe/hips_S.png",
+     "w": 71,
+     "h": 126,
+     "ax": 33.5,
+     "ay": 12.6,
+     "len": 0
+    },
+    "E": {
+     "src": "body/robe/hips_E.png",
+     "w": 96,
+     "h": 126,
+     "ax": 75.2,
+     "ay": 12.6,
+     "len": 0
+    },
+    "N": {
+     "src": "body/robe/hips_N.png",
+     "w": 67,
+     "h": 126,
+     "ax": 33.4,
+     "ay": 12.6,
+     "len": 0
+    }
+   }
+  },
+  "gloves.leather.forearm": {
+   "slot": "gloves",
+   "look": "leather",
+   "seg": "forearm",
+   "mode": "stretch",
+   "up": false,
+   "views": {
+    "S": {
+     "src": "gloves/leather/forearm_S.png",
+     "w": 28,
+     "h": 57,
+     "ax": 16.5,
+     "ay": 2.4,
+     "len": 47.8
+    },
+    "E": {
+     "src": "gloves/leather/forearm_E.png",
+     "w": 29,
+     "h": 57,
+     "ax": 15.7,
+     "ay": 2.4,
+     "len": 47.8
+    },
+    "N": {
+     "src": "gloves/leather/forearm_N.png",
+     "w": 30,
+     "h": 57,
+     "ax": 16.2,
+     "ay": 2.4,
+     "len": 47.8
+    }
+   }
+  },
+  "gloves.leather.hand": {
+   "slot": "gloves",
+   "look": "leather",
+   "seg": "hand",
+   "mode": "rigid",
+   "up": false,
+   "views": {
+    "S": {
+     "src": "gloves/leather/hand_S.png",
+     "w": 28,
+     "h": 36,
+     "ax": 15.3,
+     "ay": 5.2,
+     "len": 0
+    },
+    "E": {
+     "src": "gloves/leather/hand_E.png",
+     "w": 23,
+     "h": 36,
+     "ax": 11.2,
+     "ay": 5.2,
+     "len": 0
+    },
+    "N": {
+     "src": "gloves/leather/hand_N.png",
+     "w": 29,
+     "h": 36,
+     "ax": 16.2,
+     "ay": 5.2,
+     "len": 0
+    }
+   }
+  },
+  "gloves.gauntlet.forearm": {
+   "slot": "gloves",
+   "look": "gauntlet",
+   "seg": "forearm",
+   "mode": "stretch",
+   "up": false,
+   "views": {
+    "S": {
+     "src": "gloves/gauntlet/forearm_S.png",
+     "w": 23,
+     "h": 57,
+     "ax": 11,
+     "ay": 2.4,
+     "len": 47.8
+    },
+    "E": {
+     "src": "gloves/gauntlet/forearm_E.png",
+     "w": 24,
+     "h": 57,
+     "ax": 11.8,
+     "ay": 2.4,
+     "len": 47.8
+    },
+    "N": {
+     "src": "gloves/gauntlet/forearm_N.png",
+     "w": 24,
+     "h": 57,
+     "ax": 11.5,
+     "ay": 2.4,
+     "len": 47.8
+    }
+   }
+  },
+  "gloves.gauntlet.hand": {
+   "slot": "gloves",
+   "look": "gauntlet",
+   "seg": "hand",
+   "mode": "rigid",
+   "up": false,
+   "views": {
+    "S": {
+     "src": "gloves/gauntlet/hand_S.png",
+     "w": 23,
+     "h": 36,
+     "ax": 11.1,
+     "ay": 5.2,
+     "len": 0
+    },
+    "E": {
+     "src": "gloves/gauntlet/hand_E.png",
+     "w": 23,
+     "h": 36,
+     "ax": 10.7,
+     "ay": 5.2,
+     "len": 0
+    },
+    "N": {
+     "src": "gloves/gauntlet/hand_N.png",
+     "w": 24,
+     "h": 36,
+     "ax": 11.4,
+     "ay": 5.2,
+     "len": 0
+    }
+   }
+  },
+  "boots.leather.shin": {
+   "slot": "boots",
+   "look": "leather",
+   "seg": "shin",
+   "mode": "stretch",
+   "up": false,
+   "views": {
+    "S": {
+     "src": "boots/leather/shin_S.png",
+     "w": 30,
+     "h": 68,
+     "ax": 18,
+     "ay": 2.7,
+     "len": 58.5
+    },
+    "E": {
+     "src": "boots/leather/shin_E.png",
+     "w": 29,
+     "h": 68,
+     "ax": 13.2,
+     "ay": 2.7,
+     "len": 58.5
+    },
+    "N": {
+     "src": "boots/leather/shin_N.png",
+     "w": 33,
+     "h": 68,
+     "ax": 23,
+     "ay": 2.7,
+     "len": 58.5
+    }
+   }
+  },
+  "boots.leather.foot": {
+   "slot": "boots",
+   "look": "leather",
+   "seg": "foot",
+   "mode": "rigid",
+   "up": false,
+   "views": {
+    "S": {
+     "src": "boots/leather/foot_S.png",
+     "w": 35,
+     "h": 36,
+     "ax": 22.8,
+     "ay": 7.2,
+     "len": 0
+    },
+    "E": {
+     "src": "boots/leather/foot_E.png",
+     "w": 43,
+     "h": 36,
+     "ax": 30.1,
+     "ay": 7.2,
+     "len": 0
+    },
+    "N": {
+     "src": "boots/leather/foot_N.png",
+     "w": 34,
+     "h": 36,
+     "ax": 14.2,
+     "ay": 7.2,
+     "len": 0
+    }
+   }
+  },
+  "boots.greave.shin": {
+   "slot": "boots",
+   "look": "greave",
+   "seg": "shin",
+   "mode": "stretch",
+   "up": false,
+   "views": {
+    "S": {
+     "src": "boots/greave/shin_S.png",
+     "w": 28,
+     "h": 68,
+     "ax": 12.8,
+     "ay": 2.7,
+     "len": 58.5
+    },
+    "E": {
+     "src": "boots/greave/shin_E.png",
+     "w": 29,
+     "h": 68,
+     "ax": 9.6,
+     "ay": 2.7,
+     "len": 58.5
+    },
+    "N": {
+     "src": "boots/greave/shin_N.png",
+     "w": 29,
+     "h": 68,
+     "ax": 13.3,
+     "ay": 2.7,
+     "len": 58.5
+    }
+   }
+  },
+  "boots.greave.foot": {
+   "slot": "boots",
+   "look": "greave",
+   "seg": "foot",
+   "mode": "rigid",
+   "up": false,
+   "views": {
+    "S": {
+     "src": "boots/greave/foot_S.png",
+     "w": 25,
+     "h": 36,
+     "ax": 13.4,
+     "ay": 7.2,
+     "len": 0
+    },
+    "E": {
+     "src": "boots/greave/foot_E.png",
+     "w": 41,
+     "h": 36,
+     "ax": 27.3,
+     "ay": 7.2,
+     "len": 0
+    },
+    "N": {
+     "src": "boots/greave/foot_N.png",
+     "w": 26,
+     "h": 36,
+     "ax": 12.6,
+     "ay": 7.2,
+     "len": 0
+    }
+   }
+  },
+  "weapon.set.axe": {
+   "slot": "weapon",
+   "look": "set",
+   "seg": "weapon",
+   "mode": "rigid",
+   "up": true,
+   "views": {
+    "E": {
+     "src": "weapon/set/axe_E.png",
+     "w": 72,
+     "h": 186,
+     "ax": 21.1,
+     "ay": 152.5,
+     "len": 0
+    }
+   }
+  },
+  "weapon.set.mace": {
+   "slot": "weapon",
+   "look": "set",
+   "seg": "weapon",
+   "mode": "rigid",
+   "up": true,
+   "views": {
+    "E": {
+     "src": "weapon/set/mace_E.png",
+     "w": 49,
+     "h": 180,
+     "ax": 23.6,
+     "ay": 153,
+     "len": 0
+    }
+   }
+  },
+  "weapon.set.sword": {
+   "slot": "weapon",
+   "look": "set",
+   "seg": "weapon",
+   "mode": "rigid",
+   "up": false,
+   "views": {
+    "E": {
+     "src": "weapon/set/sword_E.png",
+     "w": 36,
+     "h": 203,
+     "ax": 17.6,
+     "ay": 28.4,
+     "len": 0
+    }
+   }
+  },
+  "weapon.set.dagger": {
+   "slot": "weapon",
+   "look": "set",
+   "seg": "weapon",
+   "mode": "rigid",
+   "up": false,
+   "views": {
+    "E": {
+     "src": "weapon/set/dagger_E.png",
+     "w": 26,
+     "h": 113,
+     "ax": 12.6,
+     "ay": 22.6,
+     "len": 0
+    }
+   }
+  },
+  "weapon.set.wand": {
+   "slot": "weapon",
+   "look": "set",
+   "seg": "weapon",
+   "mode": "rigid",
+   "up": true,
+   "views": {
+    "E": {
+     "src": "weapon/set/wand_E.png",
+     "w": 18,
+     "h": 107,
+     "ax": 8.2,
+     "ay": 94.2,
+     "len": 0
+    }
+   }
+  }
+ }
+}

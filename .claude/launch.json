@@ -1,0 +1,40 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "hns-snapshot",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "C:\\Users\\r3mc1\\AppData\\Local\\Temp\\claude\\adc3d26b03bd3a0c\\3471ad52-0477-472c-81b4-938152031422\\scratchpad\\snap\\dist\\server.mjs"
+      ],
+      "port": 3500
+    },
+    {
+      "name": "hns-snapshot-hud",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "C:\\Users\\r3mc1\\AppData\\Local\\Temp\\claude\\adc3d26b03bd3a0c\\3471ad52-0477-472c-81b4-938152031422\\scratchpad\\snap\\run\\dist\\server.mjs"
+      ],
+      "port": 3502
+    },
+    {
+      "name": "hns-snapshot-hud-dev",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--input-type=module",
+        "-e",
+        "process.env.HNS_DEV='1'; await import('file:///C:/Users/r3mc1/AppData/Local/Temp/claude/adc3d26b03bd3a0c/3471ad52-0477-472c-81b4-938152031422/scratchpad/snap/run/dist/server.mjs')"
+      ],
+      "port": 3502
+    },
+    {
+      "name": "hns-watch",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "C:/Users/r3mc1/AppData/Local/Temp/claude/adc3d26b03bd3a0c/3471ad52-0477-472c-81b4-938152031422/scratchpad/watch/dist/serve.mjs",
+        "4060"
+      ],
+      "port": 4060
+    }
+  ]
+}

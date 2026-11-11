@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HnS Royale</title>
+  <style>
+    :root {
+      --ink: #d8ccb0; --dim: #8a7f6c; --faint: #5a5248; --blood: #a3140f; --ember: #ff8a2a;
+      --stone0: #0b0a0c; --stone1: #141216; --stone2: #1d1a20; --iron: #3c3842; --iron-hi: #625d6a;
+      --mono: "Courier New", Courier, monospace;
+    }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #050405; font-family: var(--mono); -webkit-font-smoothing: none; font-smooth: never; }
+    #game { display: block; cursor: crosshair; outline: none; image-rendering: pixelated; }
+
+    /* Carved-stone + wrought-iron frame used by every DOM panel */
+    .frame {
+      background:
+        repeating-linear-gradient(0deg, rgba(0,0,0,0.18) 0 1px, transparent 1px 3px),
+        linear-gradient(180deg, var(--stone2), var(--stone1));
+      border: 2px solid #050405;
+      box-shadow: inset 0 0 0 1px var(--iron), inset 0 0 0 2px #0a090b, inset 0 2px 0 2px var(--iron-hi), 0 0 0 1px #2a262e, 0 10px 30px rgba(0,0,0,0.8);
+      border-radius: 0;
+    }
+
+    #overlay {
+      position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+      background: radial-gradient(ellipse at 50% 45%, rgba(40,16,10,0.55), rgba(3,2,3,0.96) 70%); z-index: 20;
+    }
+    #embers { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; pointer-events: none; }
+    .panel {
+      position: relative; padding: 18px 24px 16px; width: min(420px, calc(100vw - 32px)); box-sizing: border-box;
+      color: var(--ink); text-align: center;
+    }
+    #title { display: block; margin: 0 auto 2px; image-rendering: pixelated; }
+    .panel p { margin: 0 0 14px; color: var(--dim); font-size: 13px; letter-spacing: 1px; text-transform: uppercase; }
+    #name {
+      width: 100%; box-sizing: border-box; padding: 9px 10px; font: bold 16px var(--mono); border-radius: 0;
+      border: 2px solid #050405; box-shadow: inset 0 0 0 1px var(--iron); background: #0a090b; color: #f0e2c4; outline: none;
+    }
+    #name:focus { box-shadow: inset 0 0 0 1px var(--ember); }
+    .weapons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; text-align: left; }
+    .weapons label {
+      display: block; border: 2px solid #050405; box-shadow: inset 0 0 0 1px #2c2830; padding: 7px 9px; cursor: pointer;
+      background: #0e0c10; font-size: 12px; color: var(--dim);
+    }
+    .weapons label b { display: block; color: var(--ink); font-size: 14px; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 1px; }
+    .weapons input { display: none; }
+    .weapons label:has(input:checked) { box-shadow: inset 0 0 0 1px #8c2316; background: #1c0e0c; }
+    .weapons label:has(input:checked) b { color: #ffb070; }
+    #play {
+      margin-top: 12px; width: 100%; padding: 10px; font: bold 17px var(--mono); letter-spacing: 3px; text-transform: uppercase;
+      border: 2px solid #050405; border-radius: 0; cursor: pointer; color: #f6e2c0;
+      background: linear-gradient(180deg, #7a1810, #4a0c08); box-shadow: inset 0 0 0 1px #c0402a, inset 0 2px 0 1px #e06a4a;
+    }
+    #play:hover { background: linear-gradient(180deg, #92201a, #5a100a); }
+    #play:disabled { opacity: 0.6; cursor: default; }
+    #status { min-height: 18px; margin-top: 10px; font-size: 13px; color: #ff9a7a; }
+    .controls { margin-top: 10px; font-size: 12px; color: var(--faint); line-height: 1.6; }
+
+    /* Inventory / equipment panel */
+    #inv-panel {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); display: none; gap: 18px;
+      padding: 14px 16px; color: var(--ink); font-size: 12px; z-index: 10;
+      max-width: calc(100vw - 32px); max-height: calc(100vh - 32px);
+      overflow: auto; box-sizing: border-box; user-select: none; flex-wrap: wrap;
+    }
+    .inv-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+    .inv-h { font-weight: 700; color: #c8a060; text-transform: uppercase; letter-spacing: 2px; font-size: 12px; margin-top: 4px; border-bottom: 1px solid #2c2830; padding-bottom: 2px; }
+    .gear-grid { display: grid; grid-template-columns: repeat(2, 120px); gap: 6px; }
+    .flask-row { display: grid; grid-template-columns: repeat(3, 78px); gap: 6px; }
+    .bag-grid { display: grid; grid-template-columns: repeat(4, 96px); gap: 6px; }
+    .cell {
+      position: relative; height: 44px; border: 1px solid #2c2830; border-radius: 0; background: #09080a;
+      box-shadow: inset 0 0 0 1px #050405, inset 2px 2px 0 1px rgba(0,0,0,0.6);
+      display: flex; align-items: center; justify-content: center; text-align: center; padding: 2px 4px; box-sizing: border-box;
+      overflow: hidden;
+    }
+    .cell.filled { cursor: pointer; background: #110f12; }
+    .cell.filled:hover { background: #1c181d; }
+    .cell.locked { opacity: 0.35; }
+    .cell-name { font-size: 11px; line-height: 1.2; font-weight: bold; }
+    .cell-ch { position: absolute; right: 4px; bottom: 2px; font-size: 10px; color: #f0e2c4; }
+    .cell-empty { color: #4a4248; font-size: 11px; text-transform: uppercase; }
+    .stat-box { margin-top: 6px; color: #a89c84; line-height: 1.6; max-width: 402px; }
+
+    /* Tooltip: dark box, rarity-coloured name */
+    #tooltip {
+      position: fixed; display: none; pointer-events: none; z-index: 30; max-width: 290px;
+      background: rgba(6, 5, 7, 0.97); border: 2px solid #050405; box-shadow: inset 0 0 0 1px #3c3842, 0 6px 20px rgba(0,0,0,0.7);
+      padding: 8px 10px; color: #b8ac94; font-size: 12px; line-height: 1.45; text-align: center;
+    }
+    .tt-name { font-weight: 700; font-size: 14px; letter-spacing: 1px; }
+    .tt-base { font-size: 12px; font-weight: 700; }
+    .tt-sub { color: #7a705e; }
+    .tt-sec { border-top: 1px solid #241f26; margin-top: 5px; padding-top: 5px; }
+    .tt-mods { color: #8a9cff; }
+    .tt-cmp-h { color: #a89c84; margin-bottom: 2px; }
+    .good { color: #7fe08a; }
+    .bad { color: #ff6a5a; }
+    .tt-hint { margin-top: 6px; color: #5a5248; font-size: 11px; }
+
+    /* Toasts */
+    #toasts { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: none; z-index: 15; }
+    .toast { background: rgba(20, 6, 6, 0.92); border: 2px solid #050405; box-shadow: inset 0 0 0 1px #6b2a1a; color: #f0c8a8; padding: 5px 12px; font-size: 13px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <canvas id="game" tabindex="0"></canvas>
+  <div id="inv-panel" class="frame"></div>
+  <div id="tooltip"></div>
+  <div id="toasts"></div>
+  <div id="overlay">
+    <canvas id="embers"></canvas>
+    <div id="menu-root"></div>
+  </div>
+  <script src="bundle.js"></script>
+</body>
+</html>

@@ -67,6 +67,7 @@ interface Entry {
   place: number; // 0 = not yet placed
   diedTick: number; // match tick of death / leaving (-1 = alive)
   left: boolean;
+  team?: 0 | 1; // Breachway
 }
 
 export interface HostRuntimeOptions {
@@ -236,6 +237,7 @@ export class HostRuntime {
       max,
       biome: s.biome === "random" || BIOMES.some((x) => x.id === s.biome) ? (s.biome as string) : b.biome,
       size: (MAP_SIZES as readonly string[]).includes(s.size as string) ? (s.size as string) : b.size,
+      mode: s.mode === "lanes" || s.mode === "royale" ? s.mode : b.mode ?? "royale",
     };
   }
 
@@ -452,7 +454,7 @@ export class HostRuntime {
         e.left = true;
         e.diedTick = this.matchTicks;
         // Placed among the living at the moment they quit (only once the fight is on).
-        if (g.phase === "fight") e.place = g.aliveCount;
+        if (g.phase === "fight" && !g.lanes) e.place = g.aliveCount;
         this.sys(`${m.name} ${stillHere ? "left the match" : "dropped out of the match"}`);
       }
     }
@@ -560,6 +562,7 @@ export class HostRuntime {
       players: sizeN ?? players.length,
       biome: this.settings.biome === "random" ? undefined : this.settings.biome,
     };
+    game.nextMode = this.settings.mode === "lanes" ? "lanes" : "royale";
     this.state = "match";
     this.tally.clear();
     this.entries.clear();
@@ -570,12 +573,23 @@ export class HostRuntime {
     this.fightTick = -1;
     this.spawnSig = "";
     for (const m of players) this.joinMatch(m);
+    if (game.nextMode === "lanes") {
+      // Breachway teams: humans alternate first, then bots, so people spread over both sides.
+      const order = [...players.filter((m) => !m.bot), ...players.filter((m) => m.bot)];
+      order.forEach((m, i) => {
+        const p = this.gh.conns.get(m.conn);
+        if (!p) return;
+        p.team = (i % 2) as 0 | 1;
+        const e = this.entries.get(p.id);
+        if (e) e.team = p.team;
+      });
+    }
     if (!game.beginMatch()) {
       this.sys("The arena is not ready, try again in a moment.");
       this.endMatch(true);
       return false;
     }
-    this.sys(`The match begins: ${players.length} enter. Pick your spawn point.`);
+    this.sys(game.mode === "lanes" ? `Breachway begins: ${players.length} enter, two teams. Destroy the enemy Core.` : `The match begins: ${players.length} enter. Pick your spawn point.`);
     this.broadcastState();
     this.sendSpawns(true);
     return true;
@@ -584,6 +598,7 @@ export class HostRuntime {
   private tallyEvents(evs: GameEvent[]) {
     for (const e of evs) {
       if (e.k === "kill") {
+        if (this.gh.game.lanes) continue; // Breachway: deaths respawn, nobody is placed
         const en = this.entries.get(e.vid);
         if (en && !en.place) {
           const p = this.gh.game.players.get(e.vid);
@@ -675,8 +690,20 @@ export class HostRuntime {
       if (!e.place) this.snapEntry(e, p);
       if (!e.place && p.alive) alive.push(e);
     }
-    alive.sort((a, b) => Number(b.name === g.winner) - Number(a.name === g.winner) || b.kills - a.kills);
-    alive.forEach((e, i) => (e.place = i + 1));
+    const lanes = g.mode === "lanes";
+    const winTeam = lanes ? g.lanes?.winner ?? null : null;
+    if (lanes) {
+      // Breachway: the winning team shares first place, the other second.
+      for (const e of this.entries.values()) {
+        const p = g.players.get(e.pid);
+        if (p) this.snapEntry(e, p);
+        e.place = winTeam === null ? 0 : e.team === winTeam ? 1 : 2;
+        e.diedTick = -1;
+      }
+    } else {
+      alive.sort((a, b) => Number(b.name === g.winner) - Number(a.name === g.winner) || b.kills - a.kills);
+      alive.forEach((e, i) => (e.place = i + 1));
+    }
     // Still alive at the end: the fight length, without the winner screen that followed it.
     const fightTicks = (t: number) => (this.fightTick < 0 ? 0 : Math.max(0, (t < 0 ? this.matchTicks - Math.max(0, this.endedFor) : t) - this.fightTick));
     const rows: ResultRow[] = [...this.entries.values()].map((e) => {
@@ -688,7 +715,7 @@ export class HostRuntime {
         dmg: Math.round(t.dmg),
         mdmg: Math.round(t.mdmg),
         level: e.level,
-        won: !aborted && !!g.winner && e.place === 1 && e.name === g.winner,
+        won: !aborted && (lanes ? winTeam !== null && e.team === winTeam : !!g.winner && e.place === 1 && e.name === g.winner),
         alive: e.diedTick < 0,
         loot: e.loot,
         place: e.place,
@@ -714,7 +741,7 @@ export class HostRuntime {
       m.practice = false;
       if (!m.host) m.ready = false;
     }
-    this.sys(aborted ? "The match was called off." : result.winner ? `${result.winner} is the last one standing.` : "Nobody survived.");
+    this.sys(aborted ? "The match was called off." : lanes ? (result.winner ? `${result.winner} wins the Breachway.` : "The Breachway ended without a winner.") : result.winner ? `${result.winner} is the last one standing.` : "Nobody survived.");
     this.broadcastState();
   }
 }

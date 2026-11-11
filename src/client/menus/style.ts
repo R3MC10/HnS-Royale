@@ -49,6 +49,7 @@ export const MENU_CSS = `
 .m-label { color: var(--m-dim); font-size: 13px; letter-spacing: 0.06em; }
 .m-status { min-height: 20px; color: #ff9f7a; text-align: center; font-size: 14px; }
 .m-note { color: var(--m-faint); font-size: 12px; line-height: 1.5; }
+.m-ver { position: fixed; right: 12px; bottom: 8px; color: rgba(232, 214, 186, 0.6); font-size: 13px; text-shadow: 0 1px 2px #000; z-index: 5; pointer-events: none; user-select: none; letter-spacing: 0.04em; }
 .m-main { width: min(440px, 100%); }
 .m-main .m-btn { width: 100%; }
 .m-browser { width: min(980px, 100%); }
@@ -112,4 +113,7 @@ export const MENU_CSS = `
 #m-spawnpick canvas { display: block; width: 100%; aspect-ratio: 1; cursor: pointer; border: 1px solid rgba(140,116,72,0.35); background: #0b0a0c; }
 #m-spawnpick .sp-n { margin-top: 6px; font-size: 12px; color: #9a8c72; text-align: center; }
 .m-table td.m-place { color: var(--m-gold); font-family: var(--m-title); }
+.m-code { font-family: var(--m-title); color: var(--m-gold); letter-spacing: 0.22em; font-weight: 700; }
+.m-input.m-code-in { width: 7.5em; text-transform: uppercase; letter-spacing: 0.25em; font-family: var(--m-title); text-align: center; }
+.m-coderow { justify-content: center; gap: 8px; } .m-coderow .m-code { font-size: 20px; }
 `;

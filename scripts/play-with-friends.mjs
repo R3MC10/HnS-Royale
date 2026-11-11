@@ -1,7 +1,9 @@
-// "Play with friends" launcher: builds the game, serves it with the lobby / signalling service,
-// opens a free Cloudflare quick tunnel (no account) and prints one link to send to friends.
-// Friends only need a browser. Match traffic goes peer-to-peer (WebRTC) to the host's tab.
-//   node scripts/play-with-friends.mjs [--no-open] [--no-build] [--no-tunnel (same Wi-Fi only)]
+// "Play with friends" launcher: builds the game, serves it locally and opens it. Connecting needs
+// no link: in the game, Create room gives a 5-character code; friends join by that code or pick
+// the room from the list (public relays, src/net/p2p.ts). Match traffic goes peer-to-peer.
+// --tunnel additionally opens a Cloudflare quick tunnel, only so friends WITHOUT the game (no app,
+// no local copy) can load the game files in a browser; joining still goes by room code.
+//   node scripts/play-with-friends.mjs [--no-open] [--no-build] [--tunnel]
 import { spawn, spawnSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -52,7 +54,7 @@ try {
 const local = `http://localhost:${PORT}`;
 let link = null;
 try {
-  if (!args.has("--no-tunnel") && (await ensureTunnelTool(TOOLS, say))) link = await startTunnel();
+  if (args.has("--tunnel") && (await ensureTunnelTool(TOOLS, say))) link = await startTunnel();
 } catch (e) {
   say(`Could not open the internet link: ${e.message ?? e}`);
 }
@@ -60,19 +62,15 @@ try {
 say();
 say("==============================================================");
 if (link) {
-  say("  SEND THIS LINK TO YOUR FRIENDS:");
-  say();
+  say("  Friends without the game can open it here:");
   say(`    ${link}`);
-  say();
   say("  (copied to your clipboard; it changes every time you start)");
   if (isWin) spawnSync("clip", { input: link });
-} else {
-  say("  No internet link. Friends on the same Wi-Fi can still join via");
-  say(`  http://<this PC's IP address>:${PORT}`);
+  say();
 }
-say();
 say(`  You play here: ${local}`);
-say("  1. Click Host a game.   2. Friends open the link and click Browse.");
+say("  1. Play > Create room: you get a 5-character room code.");
+say("  2. Friends (app or game page) click Play, then type the code or pick your room.");
 say("  3. Add bots if you like, then Begin the match.");
 say();
 say("  Keep this window open while you play. Close it to stop.");

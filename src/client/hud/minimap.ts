@@ -127,6 +127,7 @@ const KIND_LABEL: Record<string, string> = {
 
 /** Name of the place at a world point: the landmark, the kind of clearing, or the road between them. */
 function placeName(x: number, y: number): string {
+  if (currentMap().params.mode === "lanes") return "Breachway";
   const a = areaAt(x, y);
   const z = zoneAt(x, y);
   if (a && z === ZONE[a.kind]) return a.name || KIND_LABEL[a.kind] || "";

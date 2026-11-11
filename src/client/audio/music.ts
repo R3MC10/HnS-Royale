@@ -23,6 +23,8 @@ export interface MusicState {
   late: number;
   /** 0..1 a boss is engaged near the listener (optional, default 0) */
   boss?: number;
+  /** true in a Breachway (lanes) match: its own track replaces explore */
+  lanes?: boolean;
 }
 
 interface BiomeMusic {
@@ -283,7 +285,7 @@ function rebuild(e: Engine, want: MusicScene) {
 
 // ---- generated tracks -------------------------------------------------------------------
 
-type TrackName = "menu" | "lobby" | "explore" | "combat" | "boss";
+type TrackName = "menu" | "lobby" | "explore" | "combat" | "boss" | "breachway";
 interface Deck {
   name: TrackName;
   src: AudioBufferSourceNode;
@@ -293,7 +295,7 @@ let deck: Deck | null = null;
 let mode: "explore" | "combat" | "boss" = "explore";
 let calmSince = 0;
 /** fade seconds when a track comes in (the outgoing one fades over the same time) */
-const FADE: Record<TrackName, number> = { menu: 2.5, lobby: 2, explore: 4, combat: 1.2, boss: 1.5 };
+const FADE: Record<TrackName, number> = { menu: 2.5, lobby: 2, explore: 4, combat: 1.2, boss: 1.5, breachway: 3 };
 
 function wantedTrack(now: number): TrackName | null {
   if (state.scene === "none") return null;
@@ -313,7 +315,7 @@ function wantedTrack(now: number): TrackName | null {
     mode = hot > 0.4 ? "combat" : "explore";
     calmSince = now - 4; // a boss -> combat step holds at least 3 s (no one-tick combat blip before explore)
   }
-  return mode;
+  return mode === "explore" && state.lanes ? "breachway" : mode;
 }
 
 function stopDeck(e: Engine, fade: number) {
@@ -366,7 +368,7 @@ function tick() {
   g.gain.setTargetAtTime(tr.g, now, fade / 3);
   src.connect(g).connect(e.music);
   // rhythmic tracks start on the downbeat; beds start anywhere so re-entries do not repeat
-  src.start(now, want === "explore" || want === "menu" ? Math.random() * tr.buf.duration : 0);
+  src.start(now, want === "explore" || want === "menu" || want === "breachway" ? Math.random() * tr.buf.duration : 0);
   deck = { name: want, src, g };
   audioLog("music." + want, "music", want);
 }

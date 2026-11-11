@@ -65,7 +65,7 @@ export function buildSnapshots(game: Game, events: string): Map<ServerPlayer, st
     (game.phase === "fight" || game.phase === "ended" ? `"ft":${Math.floor(game.fightTime)},` : "") +
     `"winner":${JSON.stringify(game.winner)},"alive":${game.aliveCount},"total":${joined.length},` +
     // Endgame: with REVEAL_ALIVE or fewer left, or after REVEAL_AFTER s, everyone sees where the survivors are (no zone, no timer: this ends the match).
-    (game.phase === "fight" && ((joined.length > REVEAL_ALIVE && playersPre.length <= REVEAL_ALIVE) || game.fightTime >= REVEAL_AFTER)
+    (game.phase === "fight" && !game.lanes && ((joined.length > REVEAL_ALIVE && playersPre.length <= REVEAL_ALIVE) || game.fightTime >= REVEAL_AFTER)
       ? `"last":[${playersPre.map((o) => `[${o.id},${Math.round(o.x)},${Math.round(o.y)}]`).join(",")}],`
       : "") +
     `"events":${events}`;

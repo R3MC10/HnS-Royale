@@ -1,9 +1,10 @@
-// Bridge for electron/friends.html (the "Play with friends" window): state in, retry/copy out.
+// Bridge for the game page: LAN room discovery (UDP beacon) and the LAN relay hub (electron/main.mjs).
+// The game uses it in src/net/p2p.ts; in a plain browser window.HNS_LAN is simply missing.
 const { contextBridge, ipcRenderer } = require("electron");
 
-contextBridge.exposeInMainWorld("hns", {
-  onState: (cb) => ipcRenderer.on("state", (_e, s) => cb(s)),
-  onLang: (cb) => ipcRenderer.on("lang", (_e, l) => cb(l)),
-  retry: () => ipcRenderer.send("friends:retry"),
-  copy: () => ipcRenderer.send("friends:copy"),
+contextBridge.exposeInMainWorld("HNS_LAN", {
+  setBeacon: (d) => ipcRenderer.send("lan:beacon-set", d),
+  onBeacon: (cb) => ipcRenderer.on("lan:beacon", (_e, m) => cb(m)),
+  hubStart: () => ipcRenderer.invoke("lan:hub-start"),
+  hubStop: () => ipcRenderer.invoke("lan:hub-stop"),
 });

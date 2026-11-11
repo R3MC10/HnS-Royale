@@ -7,6 +7,7 @@ export interface RoomSettings {
   max: number; // 2..20
   biome: string; // biome id or "random"
   size: string; // "auto" | "small" | "medium" | "large"
+  mode?: "royale" | "lanes"; // match mode: the royale, or Breachway (two teams, one lane: server/modes/lanes.ts)
 }
 
 export interface RoomMember {

@@ -1,28 +1,33 @@
 // HnS Royale desktop app (Electron main process).
-//  - Runs the lobby / signalling service + game files (dist/lobby.js) with Electron's own Node,
-//    so players need no Node install, and opens the game in a window.
-//  - "Play with friends" (menu): opens a Cloudflare quick tunnel and shows a link to copy. Friends
-//    can join with the app or any browser. Same code as scripts/play-with-friends.mjs (scripts/host.mjs).
+//  - Serves the game files (dist/lobby.js) with Electron's own Node, so players need no Node
+//    install, and opens the game in a window.
+//  - Online play needs no server, tunnel or link: rooms (create / join by code / room list) go
+//    through public relays inside the game (src/net/p2p.ts). This process adds the LAN part, like
+//    Retro Arena: a UDP beacon (port 41237, once a second) so apps on the same network see each
+//    other's rooms, and a small WebSocket relay hub on the host PC so LAN guests join without internet.
+//  - HNS_PROFILE=<folder> runs a second copy with its own userData (two players on one PC).
 //  - Auto-update from GitHub Releases (electron-updater): checks on start, downloads in the
 //    background, offers a restart when ready, otherwise installs on quit. Offline / no release = silent.
-//  - Closing the game window stops the server and the tunnel.
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu } from "electron";
+//  - Closing the game window stops the server.
+import { app, BrowserWindow, dialog, ipcMain, Menu } from "electron";
 import updaterPkg from "electron-updater";
+import { randomBytes } from "node:crypto";
+import dgram from "node:dgram";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ensureTunnelTool, startServer, startTunnel } from "../scripts/host.mjs";
+import { WebSocketServer } from "ws";
+import { startServer } from "../scripts/host.mjs";
 
 const { autoUpdater } = updaterPkg;
 const here = dirname(fileURLToPath(import.meta.url));
 const root = app.getAppPath();
-const TOOLS = app.isPackaged ? join(app.getPath("userData"), "tools") : join(root, "tools");
+if (process.env.HNS_PROFILE) app.setPath("userData", process.env.HNS_PROFILE); // a second copy on one PC
 const FIRST_PORT = Number(process.env.PORT) || 3001;
 
 // Language: the game's own choice (it sets <html lang> from its settings, else the system
 // language) once the page has loaded; before that the app / system locale. Polish or English.
 const STR = {
   pl: {
-    friends: "Graj ze znajomymi",
     view: "Widok",
     reload: "Odśwież",
     fullscreen: "Pełny ekran",
@@ -35,7 +40,6 @@ const STR = {
     later: "Później",
   },
   en: {
-    friends: "Play with friends",
     view: "View",
     reload: "Reload",
     fullscreen: "Full screen",
@@ -56,10 +60,6 @@ function setLang(l) {
   lang = l;
   T = STR[lang];
   buildMenu();
-  if (friendsWin && !friendsWin.isDestroyed()) {
-    friendsWin.setTitle(T.friends);
-    friendsWin.webContents.send("lang", lang);
-  }
 }
 /** Same rule as the game's systemLang(): Polish if the system / app language is Polish. */
 function systemLang() {
@@ -76,16 +76,12 @@ async function syncLangFromGame() {
 
 let server = null;
 let port = FIRST_PORT;
-let tunnel = null; // { url, proc }
-let tunnelBusy = false;
-let friendsState = { phase: "idle" };
 let mainWin = null;
-let friendsWin = null;
 
 function stopAll() {
-  for (const p of [tunnel?.proc, server]) if (p && p.exitCode === null) try { p.kill(); } catch {}
-  tunnel = null;
+  if (server && server.exitCode === null) try { server.kill(); } catch {}
   server = null;
+  stopHub();
 }
 
 async function startGameServer() {
@@ -102,62 +98,91 @@ async function startGameServer() {
   throw last;
 }
 
-// ---- "Play with friends" window -----------------------------------------------------------
+// ---- LAN: room beacon + relay hub (same idea as Retro Arena) ---------------------------------
 
-function pushFriends(state) {
-  friendsState = state;
-  if (friendsWin && !friendsWin.isDestroyed()) friendsWin.webContents.send("state", state);
-}
+const BEACON_PORT = 41237;
+let beacon = null; // what this app announces: { id, c: room code, m: room metadata, port: hub port }
+const udp = dgram.createSocket({ type: "udp4", reuseAddr: true });
+udp.on("error", () => {});
+udp.on("message", (buf, rinfo) => {
+  let m;
+  try { m = JSON.parse(String(buf)); } catch { return; }
+  if (!m || m.app !== "hns-royale" || !m.d || typeof m.d !== "object") return;
+  if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send("lan:beacon", { ip: rinfo.address, d: m.d });
+});
+udp.bind(BEACON_PORT, () => { try { udp.setBroadcast(true); } catch {} });
+const shout = (d) => {
+  const msg = Buffer.from(JSON.stringify({ app: "hns-royale", d }));
+  if (msg.length < 8000) try { udp.send(msg, BEACON_PORT, "255.255.255.255", () => {}); } catch {}
+};
+setInterval(() => beacon && shout(beacon), 1000).unref();
+ipcMain.on("lan:beacon-set", (_e, d) => {
+  if (!d || typeof d !== "object") return;
+  if (typeof d.c === "string") beacon = d;
+  else if (beacon) {
+    beacon = null;
+    shout(d); // "room closed": others drop it at once instead of after the timeout
+  }
+});
 
-async function openTunnel() {
-  if (tunnel || tunnelBusy) return pushFriends(friendsState);
-  tunnelBusy = true;
+// Relay hub: the host's game page connects as host (with a token), LAN guests connect plainly; the
+// hub passes each guest's messages to the host as {t:"open"|"msg"|"close", id} and back.
+let hub = null;
+const isLoopback = (a) => a === "127.0.0.1" || a === "::1" || a === "::ffff:127.0.0.1";
+function stopHub() {
+  if (!hub) return;
   try {
-    pushFriends({ phase: "starting" });
-    if (!(await ensureTunnelTool(TOOLS, () => pushFriends({ phase: "downloading" })))) throw new Error("no tunnel tool for this OS");
-    pushFriends({ phase: "starting" });
-    tunnel = await startTunnel(TOOLS, port);
-    clipboard.writeText(tunnel.url);
-    pushFriends({ phase: "ready", url: tunnel.url });
-    const t = tunnel;
-    t.proc.on("exit", () => {
-      if (tunnel !== t) return;
-      tunnel = null;
-      pushFriends({ phase: "error", error: "tunnel stopped" });
-    });
-  } catch (e) {
-    pushFriends({ phase: "error", error: String(e?.message ?? e) });
-  } finally {
-    tunnelBusy = false;
-  }
+    for (const c of hub.wss.clients) c.terminate();
+    hub.wss.close();
+  } catch {}
+  hub = null;
 }
-
-function openFriends() {
-  if (friendsWin && !friendsWin.isDestroyed()) {
-    friendsWin.focus();
-  } else {
-    friendsWin = new BrowserWindow({
-      width: 520,
-      height: 330,
-      resizable: false,
-      minimizable: false,
-      maximizable: false,
-      parent: mainWin ?? undefined,
-      title: T.friends,
-      backgroundColor: "#0b0807",
-      autoHideMenuBar: true,
-      webPreferences: { preload: join(here, "preload.cjs"), contextIsolation: true, nodeIntegration: false, sandbox: true },
+ipcMain.handle("lan:hub-start", async () => {
+  if (hub) return { port: hub.port, token: hub.token };
+  const wss = new WebSocketServer({ port: 0, maxPayload: 1 << 20 });
+  await new Promise((ok, fail) => {
+    wss.once("listening", ok);
+    wss.once("error", fail);
+  });
+  const h = { wss, port: wss.address().port, token: randomBytes(12).toString("hex"), host: null, guests: new Map(), next: 1 };
+  const toHost = (m) => {
+    try { h.host?.send(JSON.stringify(m)); } catch {}
+  };
+  wss.on("connection", (ws, req) => {
+    ws.on("error", () => {});
+    const q = new URL(req.url || "/", "http://hub");
+    if (q.searchParams.get("host") === h.token && isLoopback(req.socket.remoteAddress)) {
+      h.host = ws;
+      ws.on("message", (raw) => {
+        let m;
+        try { m = JSON.parse(String(raw)); } catch { return; }
+        const g = h.guests.get(m.id);
+        if (!g) return;
+        try {
+          if (m.t === "send" && typeof m.d === "string") g.send(m.d);
+          else if (m.t === "close") g.close();
+        } catch {}
+      });
+      ws.on("close", () => {
+        if (h.host !== ws) return;
+        h.host = null;
+        for (const g of h.guests.values()) try { g.close(); } catch {}
+      });
+      return;
+    }
+    if (!h.host) return ws.close();
+    const id = h.next++;
+    h.guests.set(id, ws);
+    toHost({ t: "open", id });
+    ws.on("message", (raw) => toHost({ t: "msg", id, d: String(raw) }));
+    ws.on("close", () => {
+      if (h.guests.delete(id)) toHost({ t: "close", id });
     });
-    friendsWin.setMenu(null);
-    friendsWin.loadFile(join(here, "friends.html"), { query: { lang, local: `http://localhost:${port}` } });
-    friendsWin.webContents.on("did-finish-load", () => pushFriends(friendsState));
-    friendsWin.on("closed", () => (friendsWin = null)); // the link stays up until the game closes
-  }
-  openTunnel();
-}
-
-ipcMain.on("friends:retry", () => openTunnel());
-ipcMain.on("friends:copy", () => tunnel && clipboard.writeText(tunnel.url));
+  });
+  hub = h;
+  return { port: h.port, token: h.token };
+});
+ipcMain.handle("lan:hub-stop", async () => stopHub());
 
 // ---- auto-update --------------------------------------------------------------------------
 
@@ -192,7 +217,6 @@ function checkUpdates() {
 function buildMenu() {
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
-      { label: T.friends, click: openFriends },
       {
         label: T.view,
         submenu: [
@@ -235,7 +259,7 @@ if (!app.requestSingleInstanceLock()) {
       minHeight: 600,
       title: "HnS Royale",
       backgroundColor: "#050405",
-      webPreferences: { contextIsolation: true, nodeIntegration: false },
+      webPreferences: { preload: join(here, "preload.cjs"), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false },
     });
     mainWin.on("page-title-updated", (e) => e.preventDefault());
     mainWin.loadURL(`http://localhost:${port}/`);
@@ -243,7 +267,7 @@ if (!app.requestSingleInstanceLock()) {
     setInterval(syncLangFromGame, 2000);
     mainWin.on("closed", () => {
       mainWin = null;
-      app.quit(); // closing the game closes everything, including the friends window and tunnel
+      app.quit(); // closing the game closes everything
     });
     checkUpdates();
   });

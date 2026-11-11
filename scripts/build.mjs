@@ -1,9 +1,12 @@
 // Production build: client bundle -> public/bundle.js, server -> dist/server.js
 import * as esbuild from "esbuild";
+import { readFileSync } from "node:fs";
+const APP_VERSION = JSON.parse(readFileSync("package.json", "utf8")).version;
 
 await esbuild.build({
   entryPoints: { bundle: "src/client/main.ts", sprites: "src/client/sprites.ts", sounds: "src/client/sounds.ts", hostworker: "src/net/hostworker.ts" }, // hostworker: P2P host game loop (Web Worker)
   bundle: true,
+  define: { __APP_VERSION__: JSON.stringify(APP_VERSION) }, // main-menu version watermark
   minify: true,
   outdir: "public",
   target: "es2020",

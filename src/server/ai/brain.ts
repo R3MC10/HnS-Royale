@@ -490,7 +490,7 @@ export function release(sys: MonsterSystem, m: Monster, players: Map<number, Ser
 }
 
 /** Windup step: leaps and charges travel over the last part of the windup. */
-function stepWindup(sys: MonsterSystem, m: Monster, players: Map<number, ServerPlayer>) {
+export function stepWindup(sys: MonsterSystem, m: Monster, players: Map<number, ServerPlayer>) {
   const ext = m.ext!;
   const a = ext.atk;
   m.windT += DT;

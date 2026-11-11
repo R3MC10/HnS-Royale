@@ -200,6 +200,7 @@ export interface LaneMsg {
   tm: 0 | 1; // your team
   g: number; // gold
   lv: number; // lane level
+  me: number; // your level (capped), for the shop
   wv: number; // seconds to the next wave
   n: number; // wave number
   /** Structures [kind, team, life 0..1 (0 = down), respawn s (wards)]. */

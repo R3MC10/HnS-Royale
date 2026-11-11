@@ -1,10 +1,10 @@
 // Main-thread side of hosting: spawns the host worker (public/hostworker.js), gives the host
-// player a loopback ClientConn into it, publishes + heartbeats the lobby on the lobby service and
-// accepts joiners over WebRTC, relaying their bytes to / from the worker.
+// player a loopback ClientConn into it, opens the hall's room code (src/net/p2p.ts: Trystero relays
+// + the desktop app's LAN hub), advertises it in the room list and relays guests' bytes to / from
+// the worker.
 import type { FromWorker, HostCore, ToWorker } from "./hostcore";
-import type { LobbyClient } from "./lobbyclient";
-import type { LobbyMeta, LobbyServerMsg } from "./lobbyproto";
-import { hostPeer, sendOnLink, type PeerLink } from "./rtc";
+import type { LobbyMeta } from "./lobbyproto";
+import { HostRoom, lobby, newCode, type HostLink } from "./p2p";
 import type { ClientConn } from "./transport";
 
 const LOCAL_ID = 0;
@@ -44,7 +44,8 @@ async function probeWorkerScript(url: string): Promise<string> {
 
 export class HostSession {
   readonly local: ClientConn;
-  lobbyId = "";
+  /** The hall's 5-character room code. */
+  readonly code = newCode();
   /** Called when the host's tab visibility changes (menus show a warning). */
   onHidden: (hidden: boolean) => void = () => {};
   /** Called with a human-readable problem (lobby service lost, worker crashed...). */
@@ -60,11 +61,11 @@ export class HostSession {
   private backlog: ToWorker[] = [];
   /** "worker" (normal) or "inline" (fallback: the game runs on this page's main thread). */
   mode: "worker" | "inline" = "worker";
-  private peers = new Map<number, { peer: string; link: PeerLink; signal: (d: never) => void; close: () => void; open: boolean }>();
-  private byPeer = new Map<string, number>();
+  private peers = new Map<number, { key: string; link: HostLink }>();
+  private byKey = new Map<string, number>();
   private nextId = 1;
-  private beat: ReturnType<typeof setInterval> | null = null;
-  private offLobby: (() => void) | null = null;
+  private room: HostRoom;
+  private published = false;
   private localOpen = true;
   private stopped = false;
   private onVis = () => {
@@ -73,7 +74,27 @@ export class HostSession {
     this.onHidden(hidden);
   };
 
-  constructor(private lobby: LobbyClient, hostName: string, settings: Record<string, unknown>, dev = false) {
+  constructor(hostName: string, settings: Record<string, unknown>, dev = false) {
+    this.room = new HostRoom(this.code, {
+      onOpen: (key, link) => {
+        if (this.stopped) return link.close();
+        const old = this.byKey.get(key);
+        if (old !== undefined) this.dropPeer(old);
+        const id = this.nextId++;
+        this.peers.set(id, { key, link });
+        this.byKey.set(key, id);
+        this.post({ k: "open", id });
+      },
+      onMessage: (key, d) => {
+        const id = this.byKey.get(key);
+        if (id !== undefined) this.post({ k: "msg", id, d });
+      },
+      onClose: (key) => {
+        const id = this.byKey.get(key);
+        if (id !== undefined) this.dropPeer(id);
+      },
+    });
+    this.room.onProblem = (t) => this.onProblem(t);
     const url = hostWorkerUrl();
     try {
       const w = new Worker(url);
@@ -146,19 +167,11 @@ export class HostSession {
     else void probeWorkerScript(url).then((why) => !this.stopped && say(`the host worker script could not be loaded: ${why}`));
   }
 
-  /** Publish the lobby on the service and start accepting joiners. */
+  /** Open the room code and list the hall in the room browser. */
   async publish(): Promise<void> {
-    await this.lobby.connect();
-    this.offLobby = this.lobby.on((m) => this.fromLobby(m));
-    const hosted = this.lobby.wait((m): m is Extract<LobbyServerMsg, { t: "hosted" }> => m.t === "hosted");
-    this.lobby.send({ t: "host", meta: this.lastMeta ?? { name: "Lobby", host: "Host", players: 1, max: 20, biome: "random", size: "auto", state: "room" } });
-    this.lobbyId = (await hosted).id;
-    this.beat = setInterval(() => {
-      if (this.lastMeta) this.lobby.send({ t: "meta", meta: this.lastMeta, rtt: Math.round(this.lobby.rtt) });
-    }, this.lobby.heartbeat * 1000);
-    this.lobby.onClose = () => {
-      if (!this.stopped) this.onProblem("Lost the lobby service: your game keeps running but new players can't find it.");
-    };
+    await this.room.start();
+    this.published = true;
+    lobby.advertise(this.room.ad(this.lastMeta ?? { name: "Lobby", host: "Host", players: 1, max: 20, biome: "random", size: "auto", state: "room" }));
   }
 
   private fromWorker(m: FromWorker) {
@@ -174,8 +187,7 @@ export class HostSession {
           const d = m.d;
           if (this.localOpen) queueMicrotask(() => this.local.onMessage(d));
         } else {
-          const p = this.peers.get(m.id);
-          if (p?.open) sendOnLink(p.link, m.d, m.r);
+          this.peers.get(m.id)?.link.send(m.d, m.r);
         }
         break;
       case "close":
@@ -183,10 +195,8 @@ export class HostSession {
         this.dropPeer(m.id);
         break;
       case "meta": {
-        const first = !this.lastMeta;
         this.lastMeta = m.meta as LobbyMeta;
-        if (this.lobbyId) this.lobby.send({ t: "meta", meta: this.lastMeta, rtt: Math.round(this.lobby.rtt) });
-        else if (first && this.lobby.open) this.lobby.send({ t: "host", meta: this.lastMeta });
+        if (this.published && !this.stopped) lobby.advertise(this.room.ad(this.lastMeta));
         break;
       }
       case "lag":
@@ -195,41 +205,13 @@ export class HostSession {
     }
   }
 
-  private fromLobby(m: LobbyServerMsg) {
-    if (m.t === "peer") {
-      const id = this.nextId++;
-      const entry = { peer: m.peer, open: false } as { peer: string; link: PeerLink; signal: (d: never) => void; close: () => void; open: boolean };
-      const h = hostPeer(this.lobby, m.peer, this.lobby.ice, {
-        onOpen: () => {
-          entry.open = true;
-          this.post({ k: "open", id });
-        },
-        onMessage: (d) => this.post({ k: "msg", id, d }),
-        onClose: () => this.dropPeer(id),
-      });
-      Object.assign(entry, h);
-      this.peers.set(id, entry);
-      this.byPeer.set(m.peer, id);
-    } else if (m.t === "signal") {
-      const id = this.byPeer.get(m.from);
-      const p = id !== undefined ? this.peers.get(id) : undefined;
-      p?.signal(m.data as never);
-    } else if (m.t === "peer-gone") {
-      const id = this.byPeer.get(m.peer);
-      const p = id !== undefined ? this.peers.get(id) : undefined;
-      if (p && !p.open) this.dropPeer(id!);
-    }
-  }
-
   private dropPeer(id: number) {
     const p = this.peers.get(id);
     if (!p) return;
     this.peers.delete(id);
-    this.byPeer.delete(p.peer);
-    const wasOpen = p.open;
-    p.open = false;
-    p.close();
-    if (wasOpen) this.post({ k: "close", id });
+    if (this.byKey.get(p.key) === id) this.byKey.delete(p.key);
+    p.link.close();
+    this.post({ k: "close", id });
   }
 
   /** Close the lobby: everyone gets a "host left" message, the worker stops. */
@@ -240,16 +222,15 @@ export class HostSession {
     const peers = [...this.peers.keys()];
     const worker = this.worker;
     const inline = this.inline;
+    const room = this.room;
     setTimeout(() => {
       for (const id of peers) this.dropPeer(id);
       worker?.terminate();
       inline?.stop();
+      room.stop();
     }, 300);
     this.stopped = true;
-    if (this.beat) clearInterval(this.beat);
-    this.offLobby?.();
-    this.lobby.send({ t: "unhost" });
-    this.lobby.onClose = () => {};
+    lobby.advertise(null);
     document.removeEventListener("visibilitychange", this.onVis);
     if (this.localOpen) {
       this.localOpen = false;

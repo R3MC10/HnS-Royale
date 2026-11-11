@@ -21,6 +21,8 @@ import type { MonsterSnap, PlayerSnap, HazardSnap, CampSnap, InvMsg, ProjSnap } 
 import { SKILL_GEM_BY_ID, SUPPORT_GEMS, ROUGH_SPIRIT, ROUGH_SUPPORT, innateFor, isSpiritDef } from "../../shared/content/gems";
 import { cutOptions, supportRefusal, skillDefOf, supportDefOf, isRough, isSkillGem, isSupportGem, isGem, upgradeRefusal, levelCost, gemLevel, socketCount, supportAt, supportTier, type BarSlot } from "../../shared/skills";
 import { findPath, steer, takePathSlot } from "./path";
+import { GAMBLE_SLOTS, LANE, STRUCT_KINDS, STRUCT_X, gamblePrice, isStructKind, maxCrystalLevel, skillCrystalPrice, SUPPORT_TIERS } from "../../shared/lanes";
+import type { LaneMsg } from "../../shared/protocol";
 
 export const BOT_NAMES = ["Ashwick", "Brenna", "Corvin", "Dagny", "Edric", "Fenna", "Garrick", "Hilde", "Ivo", "Jorun", "Kael", "Lyra", "Maren", "Nils", "Orla", "Pike", "Quill", "Runa", "Sable", "Torvin"];
 
@@ -179,6 +181,12 @@ class Brain {
   tpv: { id: number; x: number; y: number; at: number; vx: number; vy: number } | null = null;
   /** Last input sent: repeated (without the dodge press) on the ticks between two decisions. */
   lastCmd: { mx: number; my: number; angle: number; attack: boolean; sk?: number } | null = null;
+  /** Breachway: the latest lane HUD message (team, gold, shop), every monster (allies too), retreat flag. */
+  lane: LaneMsg | null = null;
+  allMonsters: MonsterSnap[] = [];
+  recall = false;
+  shopAt = 0;
+  crystalsBought = 0;
 
   constructor(readonly idx: number, readonly send: (m: unknown) => void) {
     this.bossHunter = true; // every bot tries the boss once ready (was one in three: the boss was almost never taken)
@@ -219,6 +227,10 @@ class Brain {
       case "snap":
         this.onSnap(m);
         break;
+      case "lane":
+        this.lane = m;
+        this.laneShop();
+        break;
     }
   }
 
@@ -250,12 +262,18 @@ class Brain {
     this.alive = s.alive;
     this.total = s.total;
     this.monsters = s.monsters;
+    if (this.lane) {
+      // Breachway: allies are not targets (the server would ignore the hits anyway).
+      const tm = this.lane.tm;
+      this.allMonsters = s.monsters;
+      this.monsters = s.monsters.filter((m: MonsterSnap) => m.tm !== tm);
+    }
     this.hazards = s.hazards;
     this.projs = s.projs ?? [];
     this.ground = s.ground;
     if (s.defs) for (const d of s.defs) this.defs.set(d.g, d.it);
     if (s.camps) this.noteCamps(s.camps);
-    this.players = s.players;
+    this.players = this.lane ? s.players.filter((p: PlayerSnap) => p.id === this.id || p.tm !== this.lane!.tm) : s.players;
     this.last = s.last ?? null;
     this.noteHits(s);
     const me = s.players.find((p: PlayerSnap) => p.id === this.id) ?? null;
@@ -618,7 +636,19 @@ class Brain {
     this.tryAlloc(now);
     this.manageGems(now);
     const hpFrac = me.hp / Math.max(1, me.maxHp);
-    const late = this.alive <= 6 || this.fightSecs > BOT_LATE_SECS;
+    const late = !this.lane && (this.alive <= 6 || this.fightSecs > BOT_LATE_SECS);
+    // Breachway: low on life -> walk back to the platform (it heals), stay until nearly full.
+    if (this.lane) {
+      const tm = this.lane.tm;
+      if (hpFrac < 0.3 && !this.flaskReady()) this.recall = true;
+      if (hpFrac > 0.9) this.recall = false;
+      if (this.recall) {
+        const hx = LANE.shopX[tm];
+        this.target = null;
+        if (hyp(me.x - hx, me.y - LANE.y) < 200) return this.input(0, 0, me.angle, false, false);
+        return this.travel(me, hx, LANE.y, angTo(me.x, me.y, hx, LANE.y), false, false, "home");
+      }
+    }
 
     // ---- danger: telegraphed hazards under us -> step out (dodge when it is about to go off)
     let dodge = false;
@@ -908,6 +938,7 @@ class Brain {
   }
 
   pickTarget(me: PlayerSnap, hpFrac: number, late: boolean): { m?: number; p?: number } | null {
+    if (this.lane) return this.lanePickTarget(me, hpFrac);
     const myPow = this.power(me);
     const truce = this.fightSecs < OPENING_TRUCE;
     const ready = this.bossReady();
@@ -983,7 +1014,144 @@ class Brain {
     return bestM ? { m: bestM.id } : null;
   }
 
+  // ---- Breachway (docs/MODE-LANES.md section 10) ---------------------------------------------------
+
+  /** Direction toward the enemy base: +1 for Dawn (west side), -1 for Dusk. */
+  laneDir(): number {
+    return this.lane?.tm === 1 ? -1 : 1;
+  }
+
+  /** Front-most alive enemy structure (the one that can be hit now), or null. */
+  laneFoeStruct(): MonsterSnap | null {
+    const foe = this.lane ? 1 - this.lane.tm : 1;
+    for (const k of STRUCT_KINDS) {
+      const m = this.monsters.find((o) => o.k === k && o.tm === foe && o.hp > 0);
+      if (m) return m;
+      const st = this.lane?.st.find((x) => x[0] === k && x[1] === foe);
+      if (st && st[2] > 0) return null; // alive but not in view: wait for it
+    }
+    return null;
+  }
+
+  /** Allied lane mobs (not structures). */
+  laneAllies(): MonsterSnap[] {
+    const tm = this.lane?.tm;
+    return this.allMonsters.filter((m) => m.tm === tm && m.hp > 0 && !isStructKind(m.k));
+  }
+
+  /** Inside the reach of an enemy shooting structure with no allied mob tanking it. */
+  laneUnderFoeTower(x: number, y: number): boolean {
+    const allies = this.laneAllies();
+    for (const m of this.monsters) {
+      if (!isStructKind(m.k) || m.k === "lane_ward" || m.hp <= 0) continue;
+      if (hyp(m.x - x, m.y - y) > 760) continue;
+      if (!allies.some((a) => hyp(a.x - m.x, a.y - m.y) < 700)) return true;
+    }
+    return false;
+  }
+
+  lanePickTarget(me: PlayerSnap, hpFrac: number): { m?: number; p?: number } | null {
+    const now = Date.now();
+    // Players: fight back when hit, or take a healthy fight that is not under their spire.
+    let bestP: PlayerSnap | null = null;
+    let bp = 1e9;
+    for (const p of this.players) {
+      if (p.id === me.id || !p.alive) continue;
+      const d = hyp(p.x - me.x, p.y - me.y);
+      if (d > 520) continue;
+      const hitMe = this.struckBy(p.id, 1) && d < 400;
+      if (!hitMe && (hpFrac < 0.5 || this.laneUnderFoeTower(p.x, p.y) || this.power(p) > this.power(me) * (1.5 - this.aggro * 0.4))) continue;
+      const sc = d - (hitMe ? 300 : 0) + (p.hp / Math.max(1, p.maxHp)) * 120;
+      if (sc < bp) {
+        bp = sc;
+        bestP = p;
+      }
+    }
+    if (bestP) return { p: bestP.id };
+    // Siege: the enemy structure first while our wave is at it and nothing is hitting the bot.
+    const siege = this.laneFoeStruct();
+    if (siege && hyp(siege.x - me.x, siege.y - me.y) < 480 && this.hurtT <= 0 && this.laneAllies().some((a) => hyp(a.x - siege.x, a.y - siege.y) < 600)) return { m: siege.id };
+    // Mobs and exiles near the bot.
+    let bestM: MonsterSnap | null = null;
+    let bm = 1e9;
+    for (const m of this.monsters) {
+      if (m.hp <= 0 || isStructKind(m.k) || (this.ignoreM.get(m.id) ?? 0) > now) continue;
+      const d = hyp(m.x - me.x, m.y - me.y);
+      if (d > 560) continue;
+      if (this.laneUnderFoeTower(m.x, m.y) && d > 200) continue;
+      const sc = d + (m.hp / Math.max(1, m.mhp)) * 60 - (m.s === 2 ? 100 : 0);
+      if (sc < bm) {
+        bm = sc;
+        bestM = m;
+      }
+    }
+    if (bestM) return { m: bestM.id };
+    // The enemy structure, while allied mobs are at it (no backdoor dives).
+    const st = this.laneFoeStruct();
+    if (st && hyp(st.x - me.x, st.y - me.y) < 700 && this.laneAllies().some((a) => hyp(a.x - st.x, a.y - st.y) < 600)) return { m: st.id };
+    return null;
+  }
+
+  /** Where to stand: just behind the allied wave front, never past the enemy spire without a wave. */
+  laneRoam(): Goal {
+    const dir = this.laneDir();
+    const tm = this.lane!.tm;
+    let front: number | null = null;
+    for (const a of this.laneAllies()) if (front === null || (a.x - front) * dir > 0) front = a.x;
+    let x: number;
+    if (front !== null) x = front - dir * 140;
+    else {
+      // No wave out: wait in front of our front-most standing structure.
+      x = STRUCT_X.lane_core[tm] + dir * 200;
+      for (const k of STRUCT_KINDS) {
+        const st = this.lane!.st.find((q) => q[0] === k && q[1] === tm);
+        if (st && st[2] > 0) {
+          x = STRUCT_X[k][tm] + dir * 200;
+          break;
+        }
+      }
+    }
+    // Never walk into the reach of an enemy spire alone.
+    const foe = this.laneFoeStruct();
+    if (foe && front === null) {
+      const stop = foe.x - dir * 820;
+      if ((x - stop) * dir > 0) x = stop;
+    }
+    const y = LANE.y + ((this.idx % 3) - 1) * 90;
+    return { kind: "explore", x, y, until: Date.now() + 1500 };
+  }
+
+  /** Quartermaster: crystals first, then gambles; equip what is better; sell the rest. */
+  laneShop() {
+    const l = this.lane;
+    if (!l || !l.shop || !this.inv) return;
+    const now = Date.now();
+    if (now < this.shopAt) return;
+    this.shopAt = now + 1500;
+    // Equip / sell what is in the bag.
+    for (const e of this.inv.inv ?? []) {
+      const it = e.it as Item;
+      if (isGem(it)) continue;
+      if (this.wants(it)) return this.send({ t: "equip", id: it.id });
+      return this.send({ t: "shop", a: "sell", id: it.id });
+    }
+    const lv = l.me;
+    const kMax = maxCrystalLevel(lv);
+    if (this.crystalsBought < 3 + Math.floor(lv / 4) && l.g >= skillCrystalPrice(kMax) && Math.random() < 0.5) {
+      this.crystalsBought++;
+      const tier = [...SUPPORT_TIERS].reverse().find((t) => lv >= t.level);
+      if (tier && this.crystalsBought % 2 === 0 && l.g >= tier.price) return this.send({ t: "shop", a: "support", lv: tier.tier });
+      return this.send({ t: "shop", a: "skill", lv: kMax });
+    }
+    const eq = this.inv.equip as Record<string, Item | undefined>;
+    const empty = GAMBLE_SLOTS.filter((q) => q !== "flask" && q !== "offhand" && !eq[q === "weapon" ? "mainhand" : q === "ring" ? "ring1" : q]);
+    const pool = empty.length ? empty : ["weapon", "body", "helmet", "gloves", "boots", "amulet", "ring", "belt"];
+    const slot = pool[Math.floor(Math.random() * pool.length)];
+    if (l.g >= gamblePrice(slot, lv) + 40) this.send({ t: "shop", a: "gamble", slot });
+  }
+
   pickRoam(me: PlayerSnap, late: boolean): Goal {
+    if (this.lane) return this.laneRoam();
     const now = Date.now();
     const m = currentMap();
     const keep = this.bossKeepOut();

@@ -39,6 +39,7 @@ import { hudClick, hudFrame, hudHint, hudOnMessage, hudOnSnap, hudReset, initHud
 import { REPLAYING, startReplay } from "./devreplay"; // dev-only match replay viewer
 import { setWorldCursor } from "./gfx/worldui"; // worldui: context cursors
 import { CINE, cineApply } from "./devcam"; // dev-only cinematic camera (?dev=1&cine=1)
+import { initLaneHud, laneOnMessage } from "./lanehud"; // Breachway lane mode HUD + Quartermaster
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const overlay = document.getElementById("overlay") as HTMLDivElement;
@@ -51,6 +52,7 @@ const interp = new Interpolator();
 const ui = new UI((m) => net.send(m));
 initSkills((m) => net.send(m)); // skill bar + Skills panel (skillbar.ts)
 initHud({ send: (m) => net.send(m), ui: { isOpen: () => ui.open, toggle: (f) => ui.toggle(f) } }); // canvas HUD + panel docking (client/hud)
+initLaneHud((m) => net.send(m), () => ui.inv);
 
 let selfId = -1;
 let joined = false;
@@ -294,7 +296,10 @@ net.onMessage = (msg: ServerMsg) => {
       break;
     case "map":
       // Regenerate the match map locally from the server's params (renderer listens via onMapChange).
-      setMap({ seed: msg.seed, players: msg.players, biome: (msg.biome || undefined) as MapParams["biome"] });
+      setMap({ seed: msg.seed, players: msg.players, biome: (msg.biome || undefined) as MapParams["biome"], mode: msg.mode });
+      break;
+    case "lane":
+      laneOnMessage(msg);
       break;
     case "noroom":
       ui.noRoom();

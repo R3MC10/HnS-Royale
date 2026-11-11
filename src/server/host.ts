@@ -238,6 +238,11 @@ export class GameHost {
         case "chat": // in-match chat (menus/ingame.ts)
           if (p.joined) this.chat(conn, p, msg);
           break;
+        case "shop": { // Breachway Quartermaster (server/modes/lanes.ts)
+          const err = game.lanes?.shop(p, msg) ?? "No shop here";
+          if (err) game.toast(p, err);
+          break;
+        }
         case "ping":
           if (isNum(msg.c)) this.send(conn, { t: "pong", c: msg.c });
           break;
@@ -299,7 +304,7 @@ export class GameHost {
       if (this.mapSent.get(conn) !== game.mapVersion) {
         this.mapSent.set(conn, game.mapVersion);
         const mp = game.mapParams;
-        this.send(conn, { t: "map", seed: mp.seed, players: mp.players, biome: mp.biome ?? "", v: game.mapVersion });
+        this.send(conn, { t: "map", seed: mp.seed, players: mp.players, biome: mp.biome ?? "", v: game.mapVersion, ...(mp.mode ? { mode: mp.mode } : {}) });
       }
       // Stats and inventory go out before the snap so the client predicts with the new values.
       if (!p.sentStats || !statsEqual(p.sentStats, p.stats)) {
@@ -316,6 +321,7 @@ export class GameHost {
       for (const text of game.toasts.get(p.id) ?? []) this.send(conn, { t: "toast", text });
       // monsters agent: buff-shrine state + this player's shrine buff, twice a second
       if (game.tick % 15 === 0) this.send(conn, { t: "bshrine", list: shrineSnap(), buff: buffOf(p.id) });
+      if (game.lanes && game.tick % 6 === 3) this.send(conn, game.lanes.hud(p)); // Breachway HUD, 5 Hz
       const snap = snaps.get(p);
       if (snap) conn.send(snap, false);
     }

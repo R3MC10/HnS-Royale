@@ -2,6 +2,9 @@
 // One lane, two bases. Team 0 (Dawn) sits on the left (west), team 1 (Dusk) on the right (east).
 import type { MonsterType } from "./content/monsters";
 import { MONSTER_BY_ID } from "./content/monsters";
+import { BASES } from "./content/bases";
+import { ROUGH_SKILL, ROUGH_SPIRIT, ROUGH_SUPPORT } from "./content/gems";
+import type { Item } from "./items";
 
 export type GameMode = "royale" | "lanes";
 export type Team = 0 | 1;
@@ -96,3 +99,13 @@ export const SUPPORT_TIERS = [
 export const SPIRIT_PRICE = 150;
 export const SPIRIT_LEVEL = 3;
 export const SELL_FRACTION = 0.25;
+
+/** What the Quartermaster pays for an item (a quarter of its shop price, more for magic / rare). */
+export function laneSellValue(it: Item): number {
+  if (it.b === ROUGH_SKILL) return Math.round(skillCrystalPrice(it.l) * SELL_FRACTION);
+  if (it.b === ROUGH_SUPPORT) return Math.round((SUPPORT_TIERS[it.l - 1]?.price ?? 80) * SELL_FRACTION);
+  if (it.b === ROUGH_SPIRIT) return Math.round(SPIRIT_PRICE * SELL_FRACTION);
+  const base = BASES.find((b) => b.id === it.b);
+  const slot = base ? base.cls : "flask";
+  return Math.max(1, Math.round(gamblePrice(slot, it.l) * SELL_FRACTION * (1 + 0.5 * (it.r ?? 0))));
+}

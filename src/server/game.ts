@@ -52,6 +52,8 @@ import {
 import { prog as skProg, playerLevel as skLevel } from "./progression";
 import { rollGemDrops, SkillSystem } from "./skills";
 import { hudOnFlask, hudOnKill, hudOnWin, hudRoundStart } from "./hudsnap";
+import { LaneMode } from "./modes/lanes";
+import { TEAM_NAMES, type GameMode } from "../shared/lanes";
 
 export const PLAYER_COLORS = [
   "#e6194b", "#3cb44b", "#ffe119", "#4363d8", "#f58231", "#911eb4", "#42d4f4", "#f032e6",
@@ -127,6 +129,11 @@ export class Game implements CombatHost {
   private mapCount = 0;
   /** Lobby hook: params for the next match's map (consumed at the next countdown). */
   nextMap: Partial<MapParams> | null = null;
+  /** Mode of the running match, and the lobby's pick for the next one (Breachway: server/modes/lanes.ts). */
+  mode: GameMode = "royale";
+  nextMode: GameMode = "royale";
+  /** The lane mode controller while a Breachway match runs. */
+  lanes: LaneMode | null = null;
   /**
    * Lobby-run matches (P2P host, src/net/hostruntime.ts): "waiting" is open practice and never
    * starts a countdown by itself (beginMatch() does), the countdown is a spawn-point pick that only
@@ -171,12 +178,12 @@ export class Game implements CombatHost {
   }
 
   /** Generate a fresh map for this many players (biome rotation). */
-  newMap(players: number, biome?: string, seed?: number) {
+  newMap(players: number, biome?: string, seed?: number, mode?: "lanes") {
     const envBiome = typeof process !== "undefined" ? process.env?.HNS_BIOME : undefined;
     // Prototype: one biome only (HNS_BIOME overrides, default hollowpine). No rotation.
     const b = biome ?? envBiome ?? PROTOTYPE_BIOME;
     this.mapCount++;
-    this.mapParams = { seed: seed ?? (Math.random() * 0x7fffffff) | 0, players: Math.max(MIN_PLAYERS_FOR_ROUND, players), biome: b };
+    this.mapParams = { seed: seed ?? (Math.random() * 0x7fffffff) | 0, players: Math.max(MIN_PLAYERS_FOR_ROUND, players), biome: b, ...(mode ? { mode } : {}) };
     setMap(this.mapParams);
     this.mapVersion++;
   }
@@ -254,7 +261,7 @@ export class Game implements CombatHost {
   }
 
   remove(p: ServerPlayer) {
-    if (p.joined && p.alive) this.spill(stripAll(p), p.x, p.y); // full loot: leaving drops everything
+    if (p.joined && p.alive && !this.lanes) this.spill(stripAll(p), p.x, p.y); // full loot: leaving drops everything
     this.players.delete(p.id);
     this.spawnTaken.delete(p.id);
     removeProgression(p);
@@ -278,7 +285,7 @@ export class Game implements CombatHost {
     }
   }
 
-  private spawn(p: ServerPlayer, at: { x: number; y: number }) {
+  spawn(p: ServerPlayer, at: { x: number; y: number }) {
     copyPhys(newPhysState(at.x, at.y), p);
     p.angle = Math.atan2(MAP_H / 2 - at.y, MAP_W / 2 - at.x); // face the center
     p.hp = p.stats.maxHp;
@@ -301,6 +308,7 @@ export class Game implements CombatHost {
 
   /** ARPG-style spill: items fan out in a ring around a point. */
   spill(items: Item[], x: number, y: number) {
+    if (this.lanes) return; // Breachway: no loot on the ground (no full loot, monsters drop nothing)
     const n = items.length;
     const off = Math.random() * Math.PI * 2;
     items.forEach((it, i) => {
@@ -352,6 +360,21 @@ export class Game implements CombatHost {
   // ---- kills --------------------------------------------------------------------
 
   onPlayerKilled(victim: ServerPlayer, killer: ServerPlayer | null, source: string) {
+    if (!victim.alive) return;
+    if (this.lanes) {
+      // Breachway: keep your gear, respawn after a timer; the mode pays the kill.
+      victim.alive = false;
+      victim.deadFor = 0;
+      victim.hp = 0;
+      this.lanes.onPlayerKilled(victim, killer);
+      if (killer) {
+        killer.kills++;
+        this.addCharges(killer, CHARGES_PLAYER_KILL);
+      }
+      hudOnKill(victim, killer, source, undefined);
+      this.events.push({ k: "kill", killer: killer?.name ?? source, victim: victim.name, vid: victim.id, x: Math.round(victim.x), y: Math.round(victim.y), kid: killer?.id });
+      return;
+    }
     progOnPlayerKilled(victim, killer);
     victim.alive = false;
     victim.deadFor = 0;
@@ -369,6 +392,12 @@ export class Game implements CombatHost {
   }
 
   onMonsterKilled(m: Monster, killer: ServerPlayer) {
+    if (this.lanes) {
+      // Breachway: the wave purse replaces monster XP and drops.
+      this.lanes.onUnitDied(m, killer);
+      this.addCharges(killer, CHARGES_NORMAL_KILL);
+      return;
+    }
     progOnMonsterKilled(m, killer);
     // Rare/unique only: magic monsters carry a mod list too, but shouldn't roll elite loot/charges.
     const mr = (m as unknown as { rarity?: number }).rarity;
@@ -401,7 +430,22 @@ export class Game implements CombatHost {
   toWaiting() {
     this.spawnChoices = [];
     this.spawnTaken.clear();
+    if (this.lanes) this.leaveLanes();
     this.enterWaiting();
+  }
+
+  /** After a Breachway match: back to a royale practice map. */
+  private leaveLanes() {
+    this.lanes?.stop();
+    this.lanes = null;
+    this.mode = "royale";
+    this.ground.clear();
+    this.newMap(MIN_PLAYERS_FOR_ROUND);
+    this.monsters.populate([]);
+    for (const p of this.joined) {
+      p.team = undefined;
+      if (p.alive) this.spawn(p, this.practiceSpawnSpot());
+    }
   }
 
   /** Free spawn choice farthest from the taken ones (-1 if none is free). */
@@ -435,6 +479,8 @@ export class Game implements CombatHost {
   }
 
   private startCountdown() {
+    if (this.lanes) this.leaveLanes();
+    if (this.nextMode === "lanes") return this.startLanes();
     this.setPhase("countdown", this.lobbyManaged ? SPAWN_PICK_TIME : COUNTDOWN_TIME);
     this.winner = null;
     this.ground.clear();
@@ -459,6 +505,30 @@ export class Game implements CombatHost {
     hudRoundStart(ps);
     this.monsters.populate(ps);
     this.events.push({ k: "info", text: "Round starting!" });
+  }
+
+  /** Breachway countdown: the lane map, two teams at their platforms, structures up. */
+  private startLanes() {
+    this.mode = "lanes";
+    this.setPhase("countdown", COUNTDOWN_TIME);
+    this.winner = null;
+    this.ground.clear();
+    this.nextMap = null;
+    const ps = this.joined;
+    this.newMap(ps.length, undefined, undefined, "lanes");
+    this.spawnChoices = [];
+    this.spawnTaken.clear();
+    this.lanes = new LaneMode(this);
+    this.lanes.start(ps);
+    for (const p of ps) {
+      resetProgression(p);
+      giveStarterKit(p, p.startWeapon, this.dropFn);
+      this.spawn(p, this.lanes.respawnSpot(p.team ?? 0));
+      p.angle = p.team === 1 ? Math.PI : 0;
+      p.inputs.length = 0;
+    }
+    hudRoundStart(ps);
+    this.events.push({ k: "info", text: "Breachway: destroy the enemy Core!" });
   }
 
   private enterWaiting() {
@@ -513,7 +583,8 @@ export class Game implements CombatHost {
     }
 
     finalDuel.mult = this.phase === "fight" && this.aliveCount === 2 && this.joined.length > 2 ? FINAL_DUEL_PVP_MULT : 1;
-    if (this.phase === "fight" && this.fightTime > SUDDEN_DEATH_AFTER) finalDuel.mult *= Math.min(SUDDEN_DEATH_MAX, 2 ** ((this.fightTime - SUDDEN_DEATH_AFTER) / SUDDEN_DEATH_DOUBLE));
+    if (this.lanes) finalDuel.mult = 1.5; // Breachway PvP multiplier 0.6 (= 0.4 x 1.5), no sudden death
+    else if (this.phase === "fight" && this.fightTime > SUDDEN_DEATH_AFTER) finalDuel.mult *= Math.min(SUDDEN_DEATH_MAX, 2 ** ((this.fightTime - SUDDEN_DEATH_AFTER) / SUDDEN_DEATH_DOUBLE));
 
     // 2. Regen + flask heals.
     for (const p of players) {
@@ -556,6 +627,20 @@ export class Game implements CombatHost {
         break;
       case "fight": {
         this.fightTime += DT;
+        if (this.lanes) {
+          this.lanes.update();
+          if (this.lanes.winner !== null) {
+            const w = this.lanes.winner;
+            this.setPhase("ended", ROUND_END_TIME);
+            this.winner = `${TEAM_NAMES[w]}`;
+            for (const p of players) if (p.team === w) {
+              p.wins++;
+              hudOnWin(p);
+            }
+            this.events.push({ k: "info", text: `${TEAM_NAMES[w]} wins: the enemy Core has fallen!` });
+          }
+          break;
+        }
         if (this.fightTime >= SUDDEN_DEATH_AFTER && this.fightTime - DT < SUDDEN_DEATH_AFTER && this.aliveCount > 1) this.events.push({ k: "info", text: "Sudden death: players hurt each other more" });
         const alive = players.filter((p) => p.alive);
         // Solo dev round: runs until the lone player dies (no instant win).
@@ -624,6 +709,9 @@ export class Game implements CombatHost {
       }
       case "hp":
         if (p.alive) p.hp = Math.max(1, Math.min(p.stats.maxHp, num(msg.v, p.hp)));
+        break;
+      case "lanefell": // Breachway dev: knock down the enemy team's front-most standing structure
+        this.lanes?.devFell(p);
         break;
       case "tp":
         if (p.alive) {

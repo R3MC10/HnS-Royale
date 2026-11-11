@@ -474,7 +474,7 @@ export function extUpdate(sys: MonsterSystem, players: Map<number, ServerPlayer>
     if (regen > 0 && m.state !== 0) m.hp = Math.min(m.maxHp, m.hp + m.maxHp * regen * DT);
     if (m.state === 0) {
       // Idle and not hit for a while: recover, so a monster that got home (or settled) while still "recently hurt" is not stuck at partial life.
-      if (canRecover(m) && m.hp < m.maxHp) m.hp = Math.min(m.maxHp, m.hp + m.maxHp * 0.12 * DT);
+      if (!laneHook.active && canRecover(m) && m.hp < m.maxHp) m.hp = Math.min(m.maxHp, m.hp + m.maxHp * 0.12 * DT); // lanes: no idle heal (structures)
       continue;
     }
     for (const md of mods) {

@@ -5,7 +5,7 @@ import { CURRENCY_BY_ID, isCurrency } from "../../shared/content/currency";
 import { SKILL_GEM_BY_ID, type SkillGemDef } from "../../shared/content/gems";
 import { MONSTER_BY_ID } from "../../shared/content/monsters";
 import { isFlask, type Item } from "../../shared/items";
-import { currentBiome, isWaterAt } from "../../shared/map";
+import { currentBiome, currentMap, isWaterAt } from "../../shared/map";
 import type { ClientMsg, GameEvent, MonsterSnap, Phase, PlayerSnap, ServerMsg } from "../../shared/protocol";
 import { isGem } from "../../shared/skills";
 import { ambience } from "./ambience";
@@ -107,7 +107,7 @@ export function audioFrame(view: AudioView, joined: boolean) {
   const combat = Math.min(1, Math.max(heat, nearMon * 0.55, Math.min(0.7, near * 0.45)));
   let late = 0;
   if (view.phase === "fight" && view.total >= 3) late = view.alive <= 2 ? 1 : view.alive <= 3 ? 0.7 : view.alive <= 5 ? 0.3 : 0;
-  music.setState({ scene: "match", biome, combat, late, boss: bossNear });
+  music.setState({ scene: "match", biome, combat, late, boss: bossNear, lanes: currentMap().params.mode === "lanes" });
   if ((frameN & 15) === 0) nearestShrine(view);
 }
 

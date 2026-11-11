@@ -214,4 +214,22 @@ export const PL: Dict = {
     "Osiągnij <b>poziom {n}</b> (masz poziom {m}), a potem obudź kapliczkę próby (niebieskie znaczniki na mapie) i przetrwaj próbę, nie tracąc honoru.",
   "Find a <b>trial shrine</b> (blue markers on the map) and press <b>F</b> beside it. Slay its guard, then its Warden. Every hit you take drains your honour.":
     "Znajdź <b>kapliczkę próby</b> (niebieskie znaczniki na mapie) i naciśnij przy niej <b>F</b>. Zabij jej straż, a potem Strażnika. Każde otrzymane trafienie odbiera ci honor.",
+  // ---- Breachway (lane mode, docs/MODE-LANES.md) ----
+  Mode: "Tryb", Royale: "Royale", "Breachway (5v5 lane)": "Wyłom (5v5, jedna linia)", Breachway: "Wyłom",
+  "Breachway: two teams, one lane. Waves march, spires shoot, you respawn. Destroy the enemy Core to win. No full loot; buy gear from the Quartermaster on your platform (H).":
+    "Wyłom: dwie drużyny, jedna linia. Fale maszerują, iglice strzelają, a ty się odradzasz. Zniszcz wrogi Rdzeń, by wygrać. Bez pełnego łupu; sprzęt kupisz u Kwatermistrza na swojej platformie (H).",
+  Dawn: "Świt", Dusk: "Zmierzch", "Outer Spire": "Zewnętrzna Iglica", "Inner Spire": "Wewnętrzna Iglica", Ward: "Strażnica", Core: "Rdzeń", Quartermaster: "Kwatermistrz",
+  "Quartermaster (H)": "Kwatermistrz (H)", "Wave {n}": "Fala {n}", "next {$t}": "następna {t}", "Your Ward rises in {n}": "Twoja Strażnica odrodzi się za {n}",
+  "Enemy Ward rises in {n}": "Wroga Strażnica odrodzi się za {n}", "Gold {n}": "Złoto {n}", "Respawning in {n}": "Odrodzenie za {n}",
+  "Victory: the enemy Core has fallen": "Zwycięstwo: wrogi Rdzeń upadł", "Defeat: your Core has fallen": "Porażka: twój Rdzeń upadł", "H or Esc closes": "H lub Esc zamyka",
+  Gamble: "Hazard", "Unidentified gear for your level: 35% normal, 50% magic, 15% rare.": "Niezidentyfikowany sprzęt na twój poziom: 35% zwykły, 50% magiczny, 15% rzadki.",
+  Crystals: "Kryształy", Sell: "Sprzedaj", "Your bag is empty.": "Twoja torba jest pusta.", "Skill crystal, level {n}": "Kryształ umiejętności, poziom {n}",
+  "Support crystal, tier {n}": "Kryształ wsparcia, stopień {n}", "Spirit crystal": "Kryształ ducha", "{n}g": "{n} zł", "+{n}g": "+{n} zł",
+  "Not enough gold": "Za mało złota", "Bought {x}": "Kupiono: {x}", "Sold {x} for {n} gold": "Sprzedano: {x} za {n} zł", "Not on offer yet": "Jeszcze niedostępne", "Take it off first": "Najpierw to zdejmij", "Nothing like that on offer": "Nie ma tego w ofercie",
+  "The Quartermaster only deals on your platform (or while you are dead).": "Kwatermistrz handluje tylko na twojej platformie (albo gdy nie żyjesz).", "No shop here": "Tu nie ma sklepu",
+  "A rogue exile joins {x}": "Wyrzutek dołącza do drużyny: {x}", "{x} slew a rogue exile": "{x}: wyrzutek zabity",
+  "{x} destroyed the {y} {z}": (a: string, b: string, c: string) => `${a} niszczy: ${c} (${b})`, "The {x} Ward rises again": (a: string) => `Strażnica (${a}) odradza się`,
+  "Breachway: destroy the enemy Core!": "Wyłom: zniszcz wrogi Rdzeń!", "{x} wins: the enemy Core has fallen!": "{x} wygrywa: wrogi Rdzeń upadł!",
+  "Breachway begins: {n} enter, two teams. Destroy the enemy Core.": "Wyłom się zaczyna: wchodzi {n}, dwie drużyny. Zniszczcie wrogi Rdzeń.",
+  "{x} wins the Breachway.": "{x} wygrywa Wyłom.", "The Breachway ended without a winner.": "Wyłom skończył się bez zwycięzcy.", "{x} Prevails": "{x} zwycięża",
 };

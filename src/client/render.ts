@@ -4,6 +4,7 @@
 import { DODGE_TIME, MAP_H, MAP_W, MAX_FLASK_SLOTS, MIN_PLAYERS_FOR_ROUND, PICKUP_RANGE, PLAYER_RADIUS, ATTACK_COMMIT } from "../shared/constants";
 import { RARITY_COLORS } from "../shared/content/loot";
 import { ELITE_MOD_BY_ID, MONSTER_BY_ID } from "../shared/content/monsters";
+import { isStructKind, TEAM_COLORS } from "../shared/lanes";
 import { flaskProps, type Item } from "../shared/items";
 import { decodeLook, NAKED_LOOK } from "../shared/look";
 import { currentMap, getPois, onMapChange, OBSTACLES, WALL, WATER } from "../shared/map";
@@ -32,7 +33,7 @@ import { hexRGB, LightMap, type RGB } from "./gfx/light";
 import { hash2, mulberry32, PixBuf, pxEllipse, pxLine, rgba, sprite, startFrameBudget, type Sprite } from "./gfx/pixel";
 import { brazierSprite, obstacleKind, obstacleSprite, SCATTER, scatterSprite, shrineIndex, stakeSprite } from "./gfx/props";
 import { buildCampPatch, buildChunk, buildTotem, cachedChunk, CHUNK, GROUND_FILL, groundChunkRange, resetGround, setGroundHoles, setGroundSize, shadowSprite, VOID } from "./gfx/world";
-import { actorScale, actorSprite, corpseSprite, drawProp, fillPaintedGround, heroSpriteId, iconImage, obstacleProp, paintedGroundChunk, propBox, type PropPick, paintedGroundDue, paintedGroundReady, scatterProp, wallDressProp } from "./gfx/sprites2d/index"; // engine-sprites: painted art
+import { actorScale, actorSprite, ART_PX, corpseSprite, drawProp, fillPaintedGround, heroSpriteId, iconImage, obstacleProp, paintedGroundChunk, propBox, type PropPick, paintedGroundDue, paintedGroundReady, scatterProp, wallDressProp } from "./gfx/sprites2d/index"; // engine-sprites: painted art
 import { HERO_H } from "./gfx/sprites2d/actors"; // integrate: painted hero height for nameplates
 import { corpseFall, drawActorBacking, drawWarmFlash, isPaintedSprite, paintedEnabled } from "./gfx/sprites2d/index"; // engine: procedural motion + readability
 import { RARITY_INFO } from "../shared/content/monsters/mods"; // engine: rarity ground glow
@@ -290,6 +291,14 @@ export function pxFrame(g: CanvasRenderingContext2D, x: number, y: number, w: nu
   g.fillStyle = fill;
   g.fillRect(x + 2, y + 2, w - 4, h - 4);
 }
+
+/** Breachway structure look: painted prop id and scale (existing art, docs/MODE-LANES.md). */
+const STRUCT_PROP: Record<string, [string, number]> = {
+  lane_outer: ["bs_spire_tall", 1.1],
+  lane_inner: ["bs_spire_tall", 1.25],
+  lane_ward: ["bs_crystal_large", 1.2],
+  lane_core: ["bs_obelisk", 1.6],
+};
 
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
@@ -1779,7 +1788,84 @@ export class Renderer {
     return actorSprite(m.k, "idle", dir, this.time + m.id * 0.37, o);
   }
 
+  /** Breachway: team ring under lane units (blue Dawn / red Dusk). */
+  private drawTeamRing(m: MonsterSnap) {
+    const g = this.g;
+    const R = (m.r + 6) * K;
+    g.save();
+    g.strokeStyle = TEAM_COLORS[m.tm ?? 0];
+    g.globalAlpha = 0.75;
+    g.lineWidth = 2;
+    g.beginPath();
+    g.ellipse(this.sx(m.x, m.y), this.sy(m.x, m.y), R, R * SQ, 0, 0, Math.PI * 2);
+    g.stroke();
+    if (m.rr) {
+      // Lane elites / exiles: a second, rarity-coloured ring so they read inside a wave.
+      g.strokeStyle = RARITY_INFO[m.rr].color;
+      g.globalAlpha = 0.95;
+      g.lineWidth = 3;
+      g.beginPath();
+      g.ellipse(this.sx(m.x, m.y), this.sy(m.x, m.y), R + 7 * K, (R + 7 * K) * SQ, 0, 0, Math.PI * 2);
+      g.stroke();
+    }
+    g.restore();
+  }
+
+  /** Breachway structures: existing painted props on a team-coloured rune ring (no new art). */
+  private drawStructure(m: MonsterSnap) {
+    const g = this.g;
+    const x = this.sx(m.x, m.y);
+    const y = this.sy(m.x, m.y);
+    const col = TEAM_COLORS[m.tm ?? 0];
+    const R = (m.r + 18) * K;
+    g.save();
+    g.translate(x, y);
+    g.scale(1, SQ);
+    const gr = g.createRadialGradient(0, 0, R * 0.2, 0, 0, R);
+    gr.addColorStop(0, col + "55");
+    gr.addColorStop(0.8, col + "33");
+    gr.addColorStop(1, col + "00");
+    g.fillStyle = gr;
+    g.beginPath();
+    g.arc(0, 0, R, 0, Math.PI * 2);
+    g.fill();
+    g.strokeStyle = col;
+    g.lineWidth = 3;
+    g.globalAlpha = 0.85;
+    g.beginPath();
+    g.arc(0, 0, R * 0.8, 0, Math.PI * 2);
+    g.stroke();
+    g.restore();
+    const prop = STRUCT_PROP[m.k] ?? ["bs_obelisk", 1];
+    const flashT = this.flashes.get("m:" + m.id) ?? 0;
+    if (!drawProp(g, prop[0], x, y, ART_PX * prop[1], { alpha: flashT > 0 ? 0.8 : 1 })) {
+      // Fallback: a plain drawn pillar.
+      g.fillStyle = "#4a4650";
+      g.fillRect(x - m.r * K * 0.4, y - m.r * K * 2.2, m.r * K * 0.8, m.r * K * 2.2);
+      g.fillStyle = col;
+      g.beginPath();
+      g.arc(x, y - m.r * K * 2.3, m.r * K * 0.35, 0, Math.PI * 2);
+      g.fill();
+    }
+    // The beacon on top: team colour, brighter while it is shooting soon.
+    g.save();
+    g.globalCompositeOperation = "lighter";
+    const top = y - (m.k === "lane_core" ? 150 : m.k === "lane_ward" ? 100 : 170) * (K / 1.0) * 0.5;
+    const pulse = 1 + Math.sin(this.time * 4 + m.id) * 0.15;
+    const bg = g.createRadialGradient(x, top, 0, x, top, 22 * pulse);
+    bg.addColorStop(0, "#ffffffcc");
+    bg.addColorStop(0.35, col + "aa");
+    bg.addColorStop(1, col + "00");
+    g.fillStyle = bg;
+    g.beginPath();
+    g.arc(x, top, 22 * pulse, 0, Math.PI * 2);
+    g.fill();
+    g.restore();
+  }
+
   private drawMonster(m: MonsterSnap) {
+    if (m.tm !== undefined && isStructKind(m.k)) return this.drawStructure(m);
+    if (m.tm !== undefined) this.drawTeamRing(m);
     const mo = this.motion.get("m:" + m.id);
     const dir = dir8(m.a);
     let anim: MonAnim = "idle";

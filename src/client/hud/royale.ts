@@ -1,6 +1,7 @@
 // Royale HUD layer (royale package): perf line (L), royale info cluster (Q), elimination / win banner
 // (T), death recap ("Last blows"), death dim + world desaturation, minimap hotspots and the waypoint
 // beacon. Smooth skin text and painted frames (STYLE v2). Labels are original.
+import { isLaneMode } from "../lanehud";
 import type { HudCtx } from "./types";
 import type { TakenHit } from "./state";
 import { hudState } from "./state";
@@ -376,6 +377,12 @@ export function drawRoyaleInfo(c: HudCtx): void {
     return;
   }
   wasJoined = true;
+  if (isLaneMode()) {
+    // Breachway: no placements, eliminations or survivor reveals (lanehud.ts shows the lane state).
+    drawPerf(c);
+    minimapHots(c);
+    return;
+  }
   track(c);
   drawPerf(c);
   drawCluster(c);

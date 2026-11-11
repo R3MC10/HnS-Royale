@@ -1,4 +1,5 @@
-// Shared hosting pieces used by both "Play with friends" paths:
+// Shared hosting pieces (startServer is used by both "Play with friends" paths; the tunnel only by
+// scripts/play-with-friends.mjs --tunnel, so friends without the game can load its files):
 //   - scripts/play-with-friends.mjs (developer / no-install path, run with Node)
 //   - electron/main.mjs (the installed app, run with Electron's own Node)
 // startServer: the lobby / signalling service + static game files (dist/lobby.js) as a child process.

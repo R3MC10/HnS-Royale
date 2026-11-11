@@ -622,11 +622,18 @@ export class MonsterSystem {
         if (d2 >= min * min) continue;
         const d = Math.sqrt(d2) || 0.01;
         const push = (min - d) / 2;
-        a.x -= (dx / d) * push;
-        a.y -= (dy / d) * push;
-        b.x += (dx / d) * push;
-        b.y += (dy / d) * push;
+        // Static monsters (Breachway structures, speed 0) are never pushed: the other one takes the whole push.
+        const sa = a.type.speed === 0;
+        const sb = b.type.speed === 0;
+        if (sa && sb) continue;
+        const ka = sa ? 0 : sb ? 2 : 1;
+        const kb = sb ? 0 : sa ? 2 : 1;
+        a.x -= (dx / d) * push * ka;
+        a.y -= (dy / d) * push * ka;
+        b.x += (dx / d) * push * kb;
+        b.y += (dy / d) * push * kb;
       }
+      if (a.type.speed === 0) continue;
       for (const p of alive) {
         const dx = a.x - p.x;
         const dy = a.y - p.y;

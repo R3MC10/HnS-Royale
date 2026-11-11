@@ -8,9 +8,8 @@ import { CLASSES, CLASS_BY_ID, DEFAULT_CLASS } from "../../shared/content/classe
 import { RARITY_COLORS } from "../../shared/content/loot";
 import { MAX_PLAYERS } from "../../shared/constants";
 import { HostSession } from "../../net/hostbridge";
-import { LobbyClient } from "../../net/lobbyclient";
-import { MAP_SIZES, type LobbyInfo } from "../../net/lobbyproto";
-import { joinLobby } from "../../net/rtc";
+import { MAP_SIZES } from "../../net/lobbyproto";
+import { cleanCode, joinByCode, lobby, type RoomAd } from "../../net/p2p";
 import { CHAT_MAX, type MatchResult, type RoomMember, type RoomServerMsg, type RoomSettings } from "../../net/roomproto";
 import { uiSound } from "../audio";
 import { openOptions } from "../options";
@@ -18,6 +17,10 @@ import type { Net } from "../net";
 import type { ClientConn } from "../../net/transport";
 import { MENU_CSS } from "./style";
 import { initInGameSocial } from "./ingame";
+
+/** Build version, injected by esbuild (scripts/build.mjs, dev.mjs); shown bottom-right on every menu screen. */
+declare const __APP_VERSION__: string;
+const APP_VERSION = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
 
 /** Dev solo testing: open the client with ?dev=1 to host a match you can start alone (and get dev commands). */
 const DEV_SOLO = (() => {
@@ -125,6 +128,9 @@ const RID = (() => {
 
 const fmtSecs = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
+/** Game modes: the royale and Breachway (lane mode, docs/MODE-LANES.md). */
+const MODES: [string, string][] = [["royale", "Royale"], ["lanes", "Breachway (5v5 lane)"]];
+const modeName = (m?: string) => (m === "lanes" ? "Breachway (5v5 lane)" : "Royale");
 const biomeName = (id: string) => (id === "random" ? "Random" : BIOMES.find((b) => b.id === id)?.name ?? id);
 const sizeName = (s: string) => (s === "auto" ? "Auto" : s[0].toUpperCase() + s.slice(1));
 const className = (id: string) => CLASS_BY_ID.get(id)?.name ?? id;
@@ -155,8 +161,9 @@ export function initMenus(h: MenuHooks): Menus {
     ]).then(done, done);
   }
 
-  const lobby = new LobbyClient();
   let host: HostSession | null = null;
+  /** Code of the hall we host or joined (shown in the hall so it can be shared). */
+  let roomCode = "";
   let screen: Screen = "title";
   let statusEl: HTMLElement | null = null;
   let profileName = store.get("hns-name");
@@ -204,6 +211,7 @@ export function initMenus(h: MenuHooks): Menus {
       browserTimer = null;
     }
     R.replaceChildren();
+    R.append(el("div", "m-ver", APP_VERSION === "dev" ? "dev" : "v" + APP_VERSION));
     statusEl = null;
     show();
     musicScene(s === "room" || s === "post" ? "lobby" : "menu");
@@ -255,8 +263,8 @@ export function initMenus(h: MenuHooks): Menus {
       profileName = name.value;
       store.set("hns-name", profileName);
     });
-    const browse = btn("Play · Browse games", "primary", () => nameOk() && renderBrowser(), "ui.confirm");
-    const hostB = btn("Host a game", "", () => nameOk() && startHosting(), "ui.confirm");
+    const browse = btn("Play · Find a room", "primary", () => nameOk() && renderBrowser(), "ui.confirm");
+    const hostB = btn("Create room", "", () => nameOk() && startHosting(), "ui.confirm");
     const opts = btn("Options", "", () => openOptions());
     const quit = btn("Quit to title", "", () => renderTitle());
     statusEl = el("div", "m-status", msg);
@@ -291,23 +299,45 @@ export function initMenus(h: MenuHooks): Menus {
 
   function renderBrowser() {
     setScreen("browser");
+    lobby.ensure();
     const p = el("div", "m-panel m-browser m-col");
     const head = el("div", "m-row");
     head.style.justifyContent = "space-between";
-    const ttl = el("h2", "m-title mid", "Open games");
+    const ttl = el("h2", "m-title mid", "Rooms");
     const right = el("div", "m-row");
-    const refresh = btn("Refresh", "small", () => void load());
-    right.append(refresh, btn("Host instead", "small", () => startHosting()), btn("Back", "small", () => renderMain()));
+    right.append(btn("Back", "small", () => renderMain()));
     head.append(ttl, right);
+    // Create a room, or join one by its code (the list below joins by code too).
+    const codeRow = el("div", "m-row");
+    const codeIn = el("input", "m-input m-code-in");
+    codeIn.maxLength = 5;
+    codeIn.placeholder = "CODE";
+    codeIn.autocomplete = "off";
+    codeIn.spellcheck = false;
+    const joinCode = () => {
+      const c = cleanCode(codeIn.value);
+      if (c.length !== 5) return status("Type the 5-character room code first.");
+      void joinGame(c);
+    };
+    codeIn.addEventListener("input", () => (codeIn.value = cleanCode(codeIn.value)));
+    codeIn.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") joinCode();
+    });
+    const joinB = btn("Join", "", joinCode, "ui.confirm");
+    joinB.id = "m-join-code";
+    const createB = btn("Create room", "primary", () => startHosting(), "ui.confirm");
+    createB.id = "m-create-room";
+    codeRow.append(createB, el("span", "m-label", "or join by code"), codeIn, joinB);
     const box = el("div", "m-scroll");
-    statusEl = el("div", "m-status");
-    p.append(head, box, statusEl, el("div", "m-note", "Ping is an estimate (your and the host's latency to the lobby service). Games are hosted by players: the host's machine runs the match."));
+    statusEl = el("div", "m-status", lobby.error);
+    p.append(head, codeRow, el("div", "m-h", "Open rooms"), box, statusEl, el("div", "m-note", "Rooms are found through public relays (and your local network in the desktop app); nobody runs a server. The host's machine runs the match."));
     R.append(p);
 
-    const draw = (list: LobbyInfo[]) => {
+    const draw = (list: RoomAd[]) => {
       const t = el("table", "m-table");
       const hr = el("tr");
-      for (const [hname, num] of [["Lobby", 0], ["Host", 0], ["Players", 1], ["Biome", 0], ["Size", 0], ["Ping", 1], ["", 0]] as const) {
+      for (const [hname, num] of [["Code", 0], ["Lobby", 0], ["Host", 0], ["Players", 1], ["Biome", 0], ["Size", 0], ["Ping", 1], ["", 0]] as const) {
         if (hname === "Biome" && !SHOW_BIOME) continue;
         const th = el("th", num ? "num" : "", hname);
         hr.append(th);
@@ -315,45 +345,41 @@ export function initMenus(h: MenuHooks): Menus {
       t.append(hr);
       if (!list.length) {
         const tr = el("tr");
-        const td = el("td", "m-empty", "No open games right now. Host one and others will see it here.");
-        td.colSpan = 7;
+        const td = el("td", "m-empty", "No open rooms right now. Create one and share the code.");
+        td.colSpan = 8;
         tr.append(td);
         t.append(tr);
       }
-      for (const l of list) {
+      for (const r of list) {
+        const l = r.meta;
         const tr = el("tr", "lob");
+        const code = el("td", "m-code", r.code);
+        code.dataset.noi18n = "";
         const nm = el("td");
         nm.append(el("b", "", l.name), document.createTextNode(" "));
         nm.append(el("span", l.state === "match" ? "m-tag busy" : "m-tag", l.state === "match" ? "In match" : "In hall"));
-        const pingEst = Math.round(lobby.rtt / 2 + l.hostRtt / 2 + 10);
+        if (r.lan) nm.append(document.createTextNode(" "), el("span", "m-tag", "LAN"));
         const full = l.players >= l.max;
-        const join = btn(full ? "Full" : "Join", "small primary", () => void joinGame(l), "ui.confirm");
+        const join = btn(full ? "Full" : "Join", "small primary", () => void joinGame(r.code), "ui.confirm");
         join.disabled = full;
         const tdj = el("td", "num");
         tdj.append(join);
-        tr.append(nm, el("td", "", l.host), el("td", "num", `${l.players}/${l.max}`), ...(SHOW_BIOME ? [el("td", "", biomeName(l.biome))] : []), el("td", "", sizeName(l.size)), el("td", "num", `~${pingEst} ms`), tdj);
-        tr.addEventListener("dblclick", () => !full && void joinGame(l));
+        tr.append(code, nm, el("td", "", l.host), el("td", "num", `${l.players}/${l.max}`), ...(SHOW_BIOME ? [el("td", "", biomeName(l.biome))] : []), el("td", "", sizeName(l.size)), el("td", "num", r.ping !== undefined ? `${r.ping} ms` : r.lan ? "LAN" : "…"), tdj);
+        tr.addEventListener("dblclick", () => !full && void joinGame(r.code));
         t.append(tr);
       }
       box.replaceChildren(t);
     };
-    const load = async () => {
-      refresh.disabled = true;
-      try {
-        const list = await lobby.list();
-        if (screen === "browser") {
-          draw(list);
-          status("");
-        }
-      } catch (err) {
-        if (screen === "browser") status((err as Error).message);
-      } finally {
-        refresh.disabled = false;
-      }
+    box.append(Object.assign(el("div", "m-empty"), { innerHTML: '<span class="m-spin"></span>Looking for rooms…' }));
+    // The first ads take a few seconds to come in over the relays: keep the spinner a moment.
+    let polls = 0;
+    const load = () => {
+      if (screen !== "browser") return;
+      const list = lobby.list();
+      if (list.length || ++polls > 3) draw(list);
     };
-    box.append(Object.assign(el("div", "m-empty"), { innerHTML: '<span class="m-spin"></span>Looking for games…' }));
-    void load();
-    browserTimer = setInterval(() => void load(), 5000);
+    browserTimer = setInterval(load, 1500);
+    codeIn.focus();
   }
 
   // ---- connecting -------------------------------------------------------------------
@@ -372,15 +398,16 @@ export function initMenus(h: MenuHooks): Menus {
     R.append(p);
   }
 
-  async function joinGame(l: LobbyInfo) {
+  async function joinGame(code: string) {
     let cancelled = false;
-    renderBusy(`Joining ${l.name}…`, () => {
+    renderBusy(`Joining room ${code}…`, () => {
       cancelled = true;
       renderBrowser();
     });
     try {
-      const conn = await joinLobby(lobby, l.id);
+      const conn = await joinByCode(code, (t) => !cancelled && status(t));
       if (cancelled) return conn.close();
+      roomCode = code;
       enterRoom();
       net.attach(conn, "p2p");
       net.sendRaw({ t: "r-hello", name: profileName, cls: profileCls, rid: RID });
@@ -396,12 +423,13 @@ export function initMenus(h: MenuHooks): Menus {
     renderBusy("Lighting the braziers…");
     let session: HostSession;
     try {
-      session = new HostSession(lobby, profileName.trim() || "Host", { name: `${profileName.trim() || "Host"}'s hall`, biome: store.get("hns-host-biome", "random"), size: store.get("hns-host-size", "auto") }, DEV_SOLO);
+      session = new HostSession(profileName.trim() || "Host", { name: `${profileName.trim() || "Host"}'s hall`, biome: store.get("hns-host-biome", "random"), size: store.get("hns-host-size", "auto"), mode: store.get("hns-host-mode", "royale") === "lanes" ? "lanes" : "royale" }, DEV_SOLO);
     } catch (err) {
       renderMain(`Could not start hosting: ${(err as Error).message}`);
       return;
     }
     host = session;
+    roomCode = session.code;
     session.onHidden = (hidden) => (warn.style.display = hidden ? "block" : "none");
     session.onProblem = (text) => {
       pushChat({ from: "", text, sys: 1 });
@@ -412,7 +440,7 @@ export function initMenus(h: MenuHooks): Menus {
     net.sendRaw({ t: "r-hello", name: profileName, cls: profileCls, rid: RID });
     try {
       await session.publish();
-      pushChat({ from: "", text: "Your hall is listed in the lobby browser. Waiting for players…", sys: 1 });
+      pushChat({ from: "", text: `Room ${session.code} is open and listed in the room browser. Share the code; waiting for players…`, sys: 1 });
     } catch (err) {
       pushChat({ from: "", text: `Not listed in the browser: ${(err as Error).message} The hall works, but nobody can find it.`, sys: 1 });
     }
@@ -543,6 +571,14 @@ export function initMenus(h: MenuHooks): Menus {
     const mid = el("div", "m-panel m-col");
     const title = el("h2", "m-title mid", settings?.name ?? "The Hall");
     mid.append(title);
+    if (roomCode) {
+      const cr = el("div", "m-row m-coderow");
+      const cv = el("b", "m-code", roomCode);
+      cv.dataset.noi18n = "";
+      cr.append(el("span", "m-label", "Room code"), cv);
+      if (isHost) cr.append(btn("Copy", "small", () => void navigator.clipboard?.writeText(roomCode).catch(() => {})));
+      mid.append(cr);
+    }
     if (room?.hostHidden && !isHost) mid.append(el("div", "m-warn", "The host's tab is in the background: the game may stutter until they come back."));
     if (room?.state === "match" && !room.members.find((m) => m.id === room!.you)?.inMatch) mid.append(el("div", "m-warn", "A match is in progress. You'll join the next one."));
     mid.append(el("div", "m-h", "Choose your calling"));
@@ -578,6 +614,7 @@ export function initMenus(h: MenuHooks): Menus {
       act.append(rb);
     }
     mid.append(act);
+    if (!isHost && me && room?.state === "room") mid.append(el("div", "m-note", "Waiting for the host to start…"));
     if (isHost && room!.state === "room") {
       // Only ready players enter the match: say who would be left in the hall before the host starts.
       const waiting = room!.members.filter((m) => !m.ready && !m.bot).map((m) => m.name);
@@ -618,15 +655,17 @@ export function initMenus(h: MenuHooks): Menus {
         for (let i = 2; i <= MAX_PLAYERS; i++) maxOpts.push([String(i), String(i)]);
         sg.append(
           lab("Hall name"), nameI,
+          lab("Mode"), sel(MODES, settings.mode ?? "royale", "mode", "hns-host-mode"),
           ...(SHOW_BIOME ? [lab("Biome"), sel([["random", "Random"], ...BIOMES.map((b) => [b.id, b.name] as [string, string])], settings.biome, "biome", "hns-host-biome")] : []),
           lab("Map size"), sel(MAP_SIZES.map((s) => [s, sizeName(s)] as [string, string]), settings.size, "size", "hns-host-size"),
           lab("Max players"), sel(maxOpts, String(settings.max), "max"),
         );
       } else {
-        sg.append(...(SHOW_BIOME ? [lab("Biome"), el("span", "", biomeName(settings.biome))] : []), lab("Map size"), el("span", "", sizeName(settings.size)), lab("Max players"), el("span", "", String(settings.max)));
+        sg.append(lab("Mode"), el("span", "", modeName(settings.mode)), ...(SHOW_BIOME ? [lab("Biome"), el("span", "", biomeName(settings.biome))] : []), lab("Map size"), el("span", "", sizeName(settings.size)), lab("Max players"), el("span", "", String(settings.max)));
       }
     }
     mid.append(sg);
+    if (settings?.mode === "lanes") mid.append(el("div", "m-note", "Breachway: two teams, one lane. Waves march, spires shoot, you respawn. Destroy the enemy Core to win. No full loot; buy gear from the Quartermaster on your platform (H)."));
     if (isHost) mid.append(el("div", "m-note", "You are the host: the match runs in this tab. Keep it in the foreground. Start needs 2 ready players (you count as ready; bots count too)."));
     statusEl = el("div", "m-status");
     mid.append(statusEl);

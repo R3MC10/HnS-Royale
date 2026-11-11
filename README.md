@@ -226,9 +226,11 @@ deployed alongside `dist/` (the server finds it relative to its own location or 
 
 `npm run app` runs the desktop app from source; `npm run dist:win` builds the installer into
 `release/` (`HnS-Royale-Setup-<version>.exe`, per-user, no admin). The app starts the lobby /
-game server with Electron's own Node (players need no Node install), opens the game, and has
-**Play with friends** in its menu bar: it opens the Cloudflare link and shows it to copy. Friends can
-join with the app or just a browser. Closing the game window stops the server and the link.
+game server with Electron's own Node (players need no Node install) and opens the game.
+Online play needs no link or server: **Play > Create room** gives a 5-character code, friends type
+it or pick the room from the list (Trystero over public Nostr relays, `src/net/p2p.ts`). On the same
+network the app also finds rooms by UDP beacon (port 41237) and joins through a relay hub on the
+host PC. `HNS_PROFILE=<folder>` runs a second copy with its own profile.
 The installer is not code-signed, so Windows SmartScreen shows "Windows protected your PC" on
 first run: click **More info -> Run anyway**.
 

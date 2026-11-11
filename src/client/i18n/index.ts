@@ -13,6 +13,7 @@ import { composeName } from "./names";
 import { PL } from "./pl";
 import { PL_CONTENT } from "./pl_content";
 import { PL_ITEMS } from "./pl_items";
+import { PL_NET } from "./pl_net";
 
 export type Lang = "en" | "pl";
 export type LangSetting = "auto" | Lang;
@@ -108,6 +109,7 @@ const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 addDict(PL_ITEMS);
 addDict(PL_CONTENT);
+addDict(PL_NET);
 addDict(PL); // UI last: wins on a clash
 // the most specific pattern (most literal text) is tried first
 for (const b of buckets.values()) b.sort((a, c) => c.lit - a.lit);

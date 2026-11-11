@@ -3,7 +3,7 @@ dist/
 public/bundle.js
 public/bundle.js.map
 tools/
-art/
+/art/
 recordings/
 reports/
 research_notes/

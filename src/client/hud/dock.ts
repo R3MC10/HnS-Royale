@@ -101,6 +101,14 @@ let fitAt = 0; // next time (ms) the inventory is re-measured
 let fitted = false; // our inline zoom/top/right are on #inv-panel
 let invVisualW = 0; // inventory width on screen (CSS px), for the left dock
 
+/** PoE2 panel size: a grid cell is about 1/20.5 of the screen height (≈53 px at 1080p), so the docked
+ *  inventory and character panels each take about a third of the screen width. Never shrinks below 1. */
+const CELL_PX = 34; // inventory.ts CELL
+const CHAR_W = 340; // charsheet.ts .pgz width
+function dockScale(): number {
+  return Math.max(1, window.innerHeight / (20.5 * CELL_PX));
+}
+
 /** Zoom the right-docked inventory so its whole natural size fits above the bottom band. */
 function fitInventory(open: boolean) {
   const inv = document.getElementById("inv-panel");
@@ -130,7 +138,7 @@ function fitInventory(open: boolean) {
   const availH = window.innerHeight - topPx - L.bottomBand * L.u - 4;
   const availW = window.innerWidth / 2 - 24;
   let k = uiScale;
-  if (natW > 0 && natH > 0) k = Math.min(uiScale, availH / natH, availW / natW);
+  if (natW > 0 && natH > 0) k = Math.min(uiScale * dockScale(), availH / natH, availW / natW);
   k = Math.max(0.35, Math.round(k * 1000) / 1000);
   inv.style.setProperty("zoom", String(k));
   // CSS zoom scales the element's own top/right too: pre-divide so it lands at the dock edge.
@@ -151,6 +159,13 @@ function fitLeftDock(invOpen: boolean) {
   }
   const ch = document.getElementById("pg-char");
   if (ch && ch.style.maxWidth !== mw) ch.style.setProperty("max-width", mw, "important");
+  // Character sheet at the same PoE2 scale as the inventory (capped to the room beside it).
+  const pgz = ch?.querySelector<HTMLElement>(".pgz");
+  if (pgz) {
+    const uiScale = getSettings().interface.uiScale || 1;
+    const z = String(Math.max(0.5, Math.round(Math.min(uiScale * dockScale(), (maxW - 4) / CHAR_W) * 1000) / 1000));
+    if (pgz.style.zoom !== z) pgz.style.setProperty("zoom", z);
+  }
   // Scrolling panels show that there is more below.
   for (const el of [sk, ch?.querySelector(".scroll")]) if (el && el.clientHeight > 0) el.classList.toggle("dock-more", el.scrollHeight - el.clientHeight - el.scrollTop > 6);
 }

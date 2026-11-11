@@ -23,7 +23,7 @@ import {
   SUPPORT_GEMS,
   SUPPORT_MAX_TIER,
   weaponReqText,
-  STARTER_SKILL,
+  classStarter,
 } from "../shared/content/gems";
 import type { Item } from "../shared/items";
 import { blocksProjectile, forObstaclesNear } from "../shared/map";
@@ -59,7 +59,7 @@ import type { Stats } from "../shared/stats";
 import type { CombatHost } from "./combat";
 import { defenceHooks, hitMonster, hitPlayer, type DamageMap, type HitForm, type HitSpec } from "./damage";
 import type { Monster } from "./monsters";
-import { progAfterHit, progHitMult } from "./progression";
+import { playerClass, progAfterHit, progHitMult } from "./progression";
 import type { ServerPlayer } from "./player";
 
 const KB_FACTOR = Math.exp(-KNOCKBACK_DECAY * DT);
@@ -257,7 +257,7 @@ export function resetSkills(p: ServerPlayer) {
   k.gemKills = 0;
   k.hinted.clear();
   const wk = p.equip.mainhand ? weaponOf(p.equip.mainhand).kind : "";
-  const sk = STARTER_SKILL[wk] ?? "cinderbolt";
+  const sk = classStarter(playerClass(p), wk); // the class's own starter (weapon fallback if it can't use this weapon)
   k.bar[2].gem = makeSkillGem(sk, 1);
   k.bar[2].sups = new Array(socketCount(k.bar[2].gem)).fill(null);
   k.mana = p.stats.maxMana;

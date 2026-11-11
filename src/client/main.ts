@@ -29,7 +29,7 @@ import { setBuffShrines } from "./gfx/monsters_fx"; // monsters agent
 import { audioEvents, audioFrame, audioOnMessage, audioSetView, hookNetAudio } from "./audio/index";
 import { heldSlot, initSkills, skillOnMessage, skillOnSnap, togglePanel as toggleSkills } from "./skillbar";
 import { clearSkillFx, setFxPlayers, skillFxEvents } from "./gfx/skills";
-import { goreEvents, goreFrame, goreScreen, goreTimeScale } from "./gfx/gore/index";
+import { goreEvents, goreFrame, goreScreen, goreTimeScale, prewarmScreenGore } from "./gfx/gore/index";
 import { prewarmTick } from "./gfx/sprites2d/prewarm";
 // Progression (XP bar, shrines, passive tree, character sheet)
 import { atShrine, drawProgWorld, layoutProgHud, progEvents, resetProgClient, setProg, setShrines } from "./prog";
@@ -41,7 +41,9 @@ import { setWorldCursor } from "./gfx/worldui"; // worldui: context cursors
 import { CINE, cineApply } from "./devcam"; // dev-only cinematic camera (?dev=1&cine=1)
 import { playSfx } from "./invsfx";
 import { initLaneHud, laneOnMessage } from "./lanehud"; // Breachway lane mode HUD + Quartermaster
+import { hitchCtx, hitchFrameGap, hitchPhase, initHitchLog } from "./hitchlog"; // always-on freeze log (Options > Graphics)
 
+initHitchLog();
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const overlay = document.getElementById("overlay") as HTMLDivElement;
 
@@ -92,6 +94,7 @@ const isFrozen = () => !selfAlive || phase === "countdown" || selfLocked;
 function resetSession() {
   joined = false;
   selfId = -1;
+  latestSelfSnapPos = null;
   predictor.reset();
   outgoing = [];
   defs.clear();
@@ -159,6 +162,7 @@ function pendingPickupStep(moving: boolean): { x: number; y: number } | null {
 }
 
 function onAction(act: Action) {
+  if (act.a === "inventory" || act.a === "panel") hitchCtx(act.a === "panel" ? `panel ${act.p}` : "panel inventory");
   switch (act.a) {
     case "pickup": {
       // In reach wins: the hovered item when it is in reach, else the nearest item in reach; a hovered label
@@ -261,6 +265,7 @@ net.onMessage = (msg: ServerMsg) => {
     case "welcome":
       selfId = msg.id;
       joined = true;
+      hitchCtx("joined match");
       overlay.style.display = "none";
       canvas.focus();
       menus.onWelcome();
@@ -297,6 +302,7 @@ net.onMessage = (msg: ServerMsg) => {
       else ui.toast(msg.text);
       break;
     case "map":
+      hitchCtx("new map");
       // Regenerate the match map locally from the server's params (renderer listens via onMapChange).
       setMap({ seed: msg.seed, players: msg.players, biome: (msg.biome || undefined) as MapParams["biome"], mode: msg.mode });
       break;
@@ -324,6 +330,7 @@ const skipWinner = () => {
 window.addEventListener("keydown", (e) => { if (!e.repeat) skipWinner(); });
 window.addEventListener("mousedown", skipWinner);
 
+let latestSelfSnapPos: { x: number; y: number } | null = null;
 function onSnap(msg: SnapMsg) {
   if (msg.phase === "ended" && phase !== "ended") {
     endedSince = performance.now();
@@ -335,6 +342,7 @@ function onSnap(msg: SnapMsg) {
     toggleSocial(false);
   }
   phase = msg.phase;
+  hitchPhase(phase);
   phaseLeft = msg.phaseLeft;
   winner = msg.winner;
   alive = msg.alive;
@@ -359,6 +367,9 @@ function onSnap(msg: SnapMsg) {
 
   const me = latestPlayers.get(selfId);
   if (me) {
+    const was = latestSelfSnapPos;
+    if (was && Math.abs(me.x - was.x) + Math.abs(me.y - was.y) > 400) hitchCtx("teleport");
+    latestSelfSnapPos = { x: me.x, y: me.y };
     selfAlive = me.alive;
     selfLocked = HARD_CC.some((k) => hasAil(me.st, k));
     predictor.reconcile(me, msg.ack, isFrozen());
@@ -527,6 +538,7 @@ function frame() {
 }
 
 function frameBody() {
+  hitchFrameGap(performance.now() - lastRafMs); // freeze log fallback (no-op where Long Animation Frames exist)
   lastRafMs = performance.now();
   if (!frameAllowed(performance.now())) {
     requestAnimationFrame(frame); // FPS cap (Graphics option)
@@ -616,6 +628,7 @@ function frameBody() {
   goreFrame(view, dt); // gore sim (gfx/gore); its layers draw inside renderer.draw
   // Idle-time art warm-up (decode before first use): generous in the menu / lobby, a thin slice in a fight.
   prewarmTick(joined && phase === "fight" ? 1.5 : 6, currentBiome().id);
+  if (!(joined && phase === "fight")) prewarmScreenGore(); // lens-blood stamps: ~20 ms each, built in the menus instead of on the first heavy hit
   renderer.draw(view, dt * goreTimeScale()); // PvP-kill hit-stop
   if (hitStopPending > 0) {
     hitStopUntil = performance.now() + hitStopPending; // starts after the frame that shows the impact
@@ -682,6 +695,7 @@ Object.assign(window, {
   hnsDev: (cmd: string, args: Record<string, unknown> = {}) => net.send({ t: "dev", cmd, ...args }),
   hnsSelf: () => ({ x: predictor.cur.x, y: predictor.cur.y, angle: predictor.cur.angle }),
   hnsProf: () => Object.fromEntries(Object.entries(renderer.prof).map(([k, v]) => [k, Math.round(v * 100) / 100])),
+  hnsPhase: () => (joined ? phase : ""),
   hnsFps: () => ({ fps: renderer.fpsEstimate, drawMs: Math.round(drawMs * 100) / 100 }),
   hnsFaded: () => (renderer as unknown as { propFadeA: Map<number, number> }).propFadeA.size, // props faded over an actor
 });

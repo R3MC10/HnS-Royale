@@ -6,6 +6,7 @@ import type { FromWorker, HostCore, ToWorker } from "./hostcore";
 import type { LobbyMeta } from "./lobbyproto";
 import { HostRoom, lobby, newCode, type HostLink } from "./p2p";
 import type { ClientConn } from "./transport";
+import { hitchCtx } from "../client/hitchlog";
 
 const LOCAL_ID = 0;
 
@@ -95,6 +96,8 @@ export class HostSession {
       },
     });
     this.room.onProblem = (t) => this.onProblem(t);
+    // Desktop app: LAN guests connect through the hub from inside the host worker (off this page's main thread).
+    this.room.onHub = (port, token) => (this.mode === "worker" ? this.post({ k: "hub", port, token }) : this.room.hubFallback(port, token));
     const url = hostWorkerUrl();
     try {
       const w = new Worker(url);
@@ -176,7 +179,16 @@ export class HostSession {
 
   private fromWorker(m: FromWorker) {
     switch (m.k) {
+      case "batch":
+        for (const x of m.m) this.fromWorker(x);
+        break;
       case "ready":
+        break;
+      case "problem":
+        this.onProblem(m.text);
+        break;
+      case "hubfail":
+        this.room.hubFallback(m.port, m.token);
         break;
       case "error":
         this.onProblem(`Host error (the game keeps running): ${m.text}`);
@@ -201,6 +213,7 @@ export class HostSession {
       }
       case "lag":
         console.warn(`host tick fell ${m.ms} ms behind`);
+        hitchCtx(`host tick ${m.ms} ms behind`);
         break;
     }
   }

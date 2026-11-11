@@ -62,6 +62,7 @@ type AdMsg = { c: string; m: LobbyMeta; port?: number };
 class Lobby {
   private room: Room | null = null;
   private send: ((d: AdMsg | null, target?: string) => void) | null = null;
+  private ask: (() => void) | null = null;
   private net = new Map<string, { ad: AdMsg; t: number; ping?: number }>(); // by Trystero peer id
   private lanAds = new Map<string, { ad: AdMsg; ip: string; t: number }>(); // by app instance id
   private mine: AdMsg | null = null;
@@ -82,6 +83,10 @@ class Lobby {
         else this.net.delete(peerId);
       };
       this.send = (d, target) => void ad.send(d as never, target ? { target } : undefined).catch(() => {});
+      // Refresh: a browser asks every host for its ad right now (hosts answer only the asker).
+      const ask = room.makeAction("ask");
+      ask.onMessage = (_d, { peerId }) => void (this.mine && this.send?.(this.mine, peerId));
+      this.ask = () => void ask.send(1 as never).catch(() => {});
       room.onPeerJoin = (p) => this.mine && this.send?.(this.mine, p);
       room.onPeerLeave = (p) => this.net.delete(p);
     } catch (err) {
@@ -109,6 +114,14 @@ class Lobby {
     this.mine = ad;
     if (ad || was) this.send?.(ad);
     lan?.setBeacon(ad ? { id: this.lanId, ...ad } : { id: this.lanId });
+  }
+
+  /** Room browser "Refresh": forget every cached ad and ask the hosts to announce themselves again. */
+  refresh() {
+    this.ensure();
+    this.net.clear();
+    this.lanAds.clear(); // LAN beacons come back within a couple of seconds
+    this.ask?.();
   }
 
   /** Open halls (relay ads + LAN beacons merged by code). Also pings relay hosts for the next call. */
@@ -196,6 +209,11 @@ export class HostRoom {
   private stopped = false;
   /** Human-readable problem (shown in the hall chat). */
   onProblem: (text: string) => void = () => {};
+  /**
+   * Set by the host bridge: the LAN hub socket is opened inside the host worker (LAN guests' traffic then
+   * never waits for this page's main thread). Unset, or after hubFallback(), this page connects itself.
+   */
+  onHub: ((port: number, token: string) => void) | null = null;
 
   constructor(
     readonly code: string,
@@ -244,11 +262,17 @@ export class HostRoom {
       try {
         const { port, token } = await lan.hubStart();
         this.hubPort = port;
-        this.connectHub(port, token);
+        if (this.onHub) this.onHub(port, token);
+        else this.connectHub(port, token);
       } catch (err) {
         console.warn("LAN hub unavailable", err);
       }
     }
+  }
+
+  /** The worker could not open the hub socket: connect from this page as before. */
+  hubFallback(port: number, token: string) {
+    if (!this.stopped && !this.hub) this.connectHub(port, token);
   }
 
   /** Desktop app: the relay hub on this PC (electron/main.mjs) passes LAN guests' messages to us. */

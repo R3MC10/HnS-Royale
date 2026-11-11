@@ -11,6 +11,8 @@
 //   can be socketed only once across the whole bar.
 // - Spirit gems (persistent auras, meta gems) reserve Spirit while switched on.
 
+import { CLASS_BY_ID } from "./classes";
+
 export type SkillTag =
   | "attack"
   | "spell"
@@ -133,7 +135,11 @@ export function displayTags(d: Pick<SkillGemDef, "tags" | "weapons">, tags: read
   return out;
 }
 
-/** Starting skill gem per weapon kind (socketed on RMB at the start of every match; the hall's class showcase lists it). */
+/**
+ * Fallback starting skill per weapon kind. Every class names its own starter (classes.ts `starter`,
+ * resolved by classStarter below); this table only covers a class whose starter can't use the weapon
+ * it is holding, or an unknown class.
+ */
 export const STARTER_SKILL: Record<string, string> = {
   sword: "sundering_blow",
   axe: "sundering_blow",
@@ -246,6 +252,20 @@ export const SKILL_GEMS: SkillGemDef[] = [
     weapons: ["quarterstaff"], color: "#b8b0ff", // PoE2: the vaulting lightning slam is a quarterstaff skill
   },
 
+  // ---- class starters (one per class; see classes.ts `starter`) ----
+  {
+    id: "opening_cut", name: "Opening Cut", kind: "strike", tags: ["attack", "melee", "strike", "physical"], attr: "dex", tier: 1,
+    desc: "A quick, low slash with your dagger. Short and light, so you can cut and roll away before they answer.",
+    cost: 3, time: 0.7, commit: 0.45, cd: 0, move: 0.55, dmg: 1.3, arcDeg: 70, reach: 8, kbMult: 0.4,
+    weapons: ["dagger"], color: "#e0c8d8",
+  },
+  {
+    id: "hazeward_sweep", name: "Hazeward Sweep", kind: "strike", tags: ["attack", "melee", "strike", "area", "physical"], attr: "dex", tier: 1,
+    desc: "Swing your staff in a wide, low arc that clips everything in front of you and pushes it back.",
+    cost: 6, time: 1, commit: 0.5, cd: 0, move: 0.35, dmg: 1.45, arcDeg: 150, reach: 22, kbMult: 1.1,
+    weapons: ["quarterstaff"], color: "#b8e0dc",
+  },
+
   // ---- spirit gems (cut from rough spirit crystals) ----
   {
     id: "ashen_mantle", name: "Ashen Mantle", kind: "aura", tags: ["persistent", "buff"], attr: "str", tier: 1, spirit: 30,
@@ -297,6 +317,14 @@ export const SKILL_GEMS: SkillGemDef[] = [
 ];
 
 export const SKILL_GEM_BY_ID = new Map(SKILL_GEMS.map((s) => [s.id, s]));
+
+/** Starting skill for a class holding weapon kind `wk`: the class's own starter if it can use that weapon, else the weapon fallback. */
+export function classStarter(cls: string | null | undefined, wk: string | null | undefined): string {
+  const own = CLASS_BY_ID.get(cls ?? "")?.starter;
+  const d = own ? SKILL_GEM_BY_ID.get(own) : undefined;
+  if (d && (!d.weapons?.length || (!!wk && d.weapons.includes(wk)))) return d.id;
+  return STARTER_SKILL[wk ?? ""] ?? "cinderbolt";
+}
 export const isSpiritDef = (d: SkillGemDef) => d.kind === "aura" || d.kind === "meta";
 /** Gems a rough skill crystal can be cut into. */
 export const CUTTABLE_SKILLS = SKILL_GEMS.filter((d) => d.tier > 0 && !isSpiritDef(d));

@@ -107,6 +107,11 @@ export function clipOutsideHud(g: CanvasRenderingContext2D, L: HudLayout): void 
 
 let toastTop = -1;
 /** Keep the DOM toast stack under the top-centre column (called once per frame). */
+let toastRect: DOMRect | null = null;
+let toastN = 0;
+let toastRectTop = -1;
+let toastAge = 0;
+
 export function placeToasts(L: HudLayout): void {
   if (typeof document === "undefined") return;
   const el = document.getElementById("toasts");
@@ -116,8 +121,17 @@ export function placeToasts(L: HudLayout): void {
     toastTop = top;
     el.style.top = `${top}px`;
   }
-  if (el.childElementCount > 0) {
-    const r = el.getBoundingClientRect(); // world labels keep out from under a showing toast
+  const n = el.childElementCount;
+  if (n > 0) {
+    // world labels keep out from under a showing toast. Reading the rect forces a layout, so only re-read
+    // it when the toast count or top changes, or every 15 frames (not every frame).
+    if (n !== toastN || top !== toastRectTop || ++toastAge >= 15 || !toastRect) {
+      toastRect = el.getBoundingClientRect();
+      toastN = n;
+      toastRectTop = top;
+      toastAge = 0;
+    }
+    const r = toastRect;
     laneClaim("banner", { x: r.left / L.u, y: r.top / L.u, w: r.width / L.u, h: r.height / L.u });
-  }
+  } else toastN = 0;
 }

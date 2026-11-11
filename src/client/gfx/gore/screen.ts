@@ -187,14 +187,39 @@ function buildStamp(seed: number): { cv: HTMLCanvasElement; meta: StampMeta } {
   return { cv, meta: { dir, rim } };
 }
 
+/** Build the stamps still missing (all of them on a first heavy hit when the warm-up did not finish). */
 function buildStamps() {
-  stamps = [];
-  metas = [];
-  for (let v = 0; v < STAMPS; v++) {
-    const b = buildStamp(9001 + v * 77);
-    stamps.push(b.cv);
-    metas.push(b.meta);
+  while (!stampsDone()) buildNextStamp();
+}
+const stampsDone = () => !!stamps && stamps.length >= STAMPS;
+function buildNextStamp() {
+  if (!stamps) {
+    stamps = [];
+    metas = [];
   }
+  const b = buildStamp(9001 + stamps.length * 77);
+  // Read one pixel back: the blurred paths are rasterised here (about 20 ms per stamp), not at the end
+  // of whatever frame happens to use the stamp first.
+  b.cv.getContext("2d")!.getImageData(0, 0, 1, 1);
+  stamps.push(b.cv);
+  metas.push(b.meta);
+}
+
+/**
+ * Warm-up behind the menus: one stamp (or the vignette) per call. Built all at once on the first heavy
+ * hit, the ten blurred 384 px stamps froze that frame for about 250 ms.
+ * Returns true while there is work left.
+ */
+export function prewarmScreenGore(): boolean {
+  if (!stampsDone()) {
+    buildNextStamp();
+    return true;
+  }
+  if (!vigCv) {
+    buildVignette();
+    return false;
+  }
+  return false;
 }
 
 /** Smooth 2D value noise (seeded lattice, smoothstep blend). */
@@ -291,7 +316,7 @@ function edgeSpot(inset: number): { x: number; y: number; dir: number } {
 export function screenSplat(severity: number) {
   const a = goreAmount();
   if (a <= 0) return;
-  if (!stamps) buildStamps();
+  if (!stampsDone()) buildStamps();
   severity = Math.min(1, severity);
   const now = performance.now();
   decayVignette(now);
@@ -419,7 +444,7 @@ export function drawScreen(ctx: CanvasRenderingContext2D, W: number, H: number) 
   if (amt <= 0) return;
   const any = vignette > 0.01 || spl.some((s) => s.on);
   if (!any) return;
-  if (!stamps) buildStamps();
+  if (!stampsDone()) buildStamps();
   if (!vigCv) buildVignette();
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);

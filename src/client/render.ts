@@ -29,7 +29,7 @@ import { ELITE_COLORS, monsterFrame, type MonAnim } from "./gfx/monsters";
 import { smoothMonsterFrame, smoothTop } from "./gfx/monsters_smooth"; // monsters agent: smooth roster art
 import { clipOutsideHud, laneClaim, laneRects, levelBannerTop, lanesBeginFrame, lanesFixed, placeToasts } from "./hud/lanes"; // HUD lanes: who owns which screen rect
 import { getHudLayout } from "./hud/layout";
-import { drawBuffHud, drawBuffShrineLabels, drawBuffShrines, drawMonAura, drawMonHazard, drawMonLabel, type MonFx, type PlateRect } from "./gfx/monsters_fx"; // monsters agent
+import { drawBuffHud, drawBuffShrineLabels, drawBuffShrines, drawMonAura, drawMonHazard, drawMonLabel, setViewTeam, sideColor, type MonFx, type PlateRect } from "./gfx/monsters_fx"; // monsters agent
 import { hudState } from "./hud/state"; // polish: last-hit target gets a nameplate
 import { hexRGB, LightMap, type RGB } from "./gfx/light";
 import { hash2, mulberry32, PixBuf, pxEllipse, pxLine, rgba, sprite, startFrameBudget, type Sprite } from "./gfx/pixel";
@@ -1150,6 +1150,8 @@ export class Renderer {
       const modIds = new Set(near.length > 1 ? [] : near.map((m) => m.id));
       this.hudR = laneRects(getHudLayout());
       this.selfPlate = undefined;
+      this.viewTm = v.self?.tm;
+      setViewTeam(this.viewTm); // team-relative life bars
       if (getSettings().interface.playerLabels !== "off")
         for (const p of v.players.values())
           if (p.alive && this.onScreen(p.x, p.y)) {
@@ -2013,7 +2015,7 @@ export class Renderer {
       rect.y = y - 8;
       if (this.hudR.some((r) => hit(rect, r))) return;
     }
-    this.bar(x - Math.floor(bw / 2), y, bw, m.hp / m.mhp, open ? col : "#77737e");
+    this.bar(x - Math.floor(bw / 2), y, bw, m.hp / m.mhp, open ? sideColor(tm) : "#77737e", m.esm ? (m.es ?? 0) / m.esm : -1);
     this.plates.push(rect);
     const name = STRUCT_NAME[m.k] ?? m.k;
     this.plateText.push(() => skinText(this.g, name, x, y - 7, { size: 5, face: "display", align: "center", color: col, alpha: open ? 1 : 0.7 }));
@@ -2641,9 +2643,9 @@ export class Renderer {
 
   // ---- labels ---------------------------------------------------------------
 
-  private bar(x: number, y: number, w: number, frac: number, color: string) {
+  private bar(x: number, y: number, w: number, frac: number, color: string, esFrac = -1) {
     // worldui: smooth two-tone bar in a dark iron frame (native-res HUD pass); same footprint as before.
-    if (this.g === this.hg) drawWorldBar(this.g, x, y, w, 2, frac, color);
+    if (this.g === this.hg) drawWorldBar(this.g, x, y, w, 2, frac, color, esFrac);
     else {
       const { g } = this;
       g.fillStyle = "#050405";
@@ -2652,12 +2654,17 @@ export class Renderer {
       g.fillRect(x, y, w, 2);
       g.fillStyle = color;
       g.fillRect(x, y, Math.round(w * Math.max(0, Math.min(1, frac))), 2);
+      if (esFrac > 0) {
+        g.fillStyle = "#6fb4ff";
+        g.fillRect(x, y, Math.round(w * Math.min(1, esFrac)), 1);
+      }
     }
   }
 
   private plateText: (() => void)[] = []; // loop19: queued plate text (drawn after all bars)
   private selfPlate: PlateRect | undefined; // loop21: your own name / life plate this frame
   private hudR: PlateRect[] = []; // loop19: HUD-owned rects this frame (plates never land in them)
+  private viewTm: number | undefined; // Breachway: your team (life bars: allies green, enemies red)
   private plates: PlateRect[] = []; // polish: nameplates placed this frame (stacked to avoid overlap)
 
   private drawMonsterLabel(m: MonsterSnap, focus = false, mods = true, bare = false) {
@@ -2675,7 +2682,7 @@ export class Renderer {
     const x = this.sx(m.x, m.y);
     const y = this.sy(m.x, m.y) - this.up(top * sc * ZP * 1.12 + 10);
     const bw = Math.max(16, this.up(m.r * 1.3));
-    if (damaged) this.bar(x - Math.floor(bw / 2), y, bw, m.hp / m.mhp, m.e ? "#e8a03a" : "#c8402e");
+    if (damaged) this.bar(x - Math.floor(bw / 2), y, bw, m.hp / m.mhp, sideColor(m.tm));
     if (m.e) {
       const c = ELITE_COLORS[m.e[0]] ?? "#ffcc66";
       skinText(this.g, m.n ?? "", x, y - 17, { size: 5, face: "display", align: "center", color: "#ffd27a" }); // worldui: smooth serif
@@ -2698,7 +2705,7 @@ export class Renderer {
     const frac = Math.max(0, p.hp / (p.maxHp || 100));
     // worldui: smooth life bar with an energy-shield strip, dim "Lv N" + name in the serif face
     const esm = p.esm ?? 0;
-    drawWorldBar(g, x - 11, y, 22, 2.2, frac, frac > 0.5 ? HP_GREEN : frac > 0.25 ? "#e0b030" : "#e03a2a", esm > 0 ? (p.es ?? 0) / esm : -1);
+    drawWorldBar(g, x - 11, y, 22, 2.2, frac, isSelf || (p.tm !== undefined && p.tm === this.viewTm) ? HP_GREEN : "#d8402e", esm > 0 ? (p.es ?? 0) / esm : -1);
     const size = 4.4;
     const lv = p.lv ? `Lv ${p.lv}  ` : "";
     const lvW = lv ? skinTextW(lv, { size: size * 0.82, face: "body" }) : 0;

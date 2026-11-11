@@ -14,6 +14,16 @@ import { SKIN, drawSkinPanel, skinText, skinTextW, skinTitle } from "./skin";
 import { drawCampHintHud, drawWaypointHud, installMapInput, isMapOverlayOpen, minimapHots, resetMapState } from "./minimap";
 import { isRightDockOpen } from "./dock";
 import { laneClaim } from "./lanes";
+import { lastHitch } from "../hitchlog";
+
+/** ?dev=1: the freeze line shows even with the FPS counter off. */
+const DEV_PERF = (() => {
+  try {
+    return new URLSearchParams(location.search).get("dev") === "1";
+  } catch {
+    return false;
+  }
+})();
 
 const BANNER_TIME = 4;
 const BANNER_FADE = 0.5;
@@ -65,7 +75,14 @@ function drawPerf(c: HudCtx) {
     c.text(s, x, y, col);
     x += c.textW(s) + 6;
   }
-  if (gs.showFps) c.text(`${Math.round(c.fps)} fps`, x, y, DIM);
+  if (gs.showFps) {
+    const s = `${Math.round(c.fps)} fps`;
+    c.text(s, x, y, DIM);
+    x += c.textW(s) + 6;
+  }
+  // Freeze log (hitchlog.ts): the newest frame over 150 ms, for a minute. Options > Graphics copies the full log.
+  const h = gs.showFps || DEV_PERF ? lastHitch() : null;
+  if (h && performance.now() - h.at < 60000) c.text(`Freeze ${h.ms} ms`, x, y, WARN);
 }
 
 /** Q: two right-aligned lines under the minimap (and its area name). */

@@ -9,7 +9,27 @@ import { createHostCore, type FromWorker, type ToWorker } from "./hostcore";
 export type { FromWorker, ToWorker } from "./hostcore";
 
 const scope = self as unknown as Worker;
-const post = (m: FromWorker) => scope.postMessage(m);
+// Everything one tick (or one incoming message) sends goes to the page as a single message: one task on
+// the host page's main thread per tick instead of one per guest message, so the relay keeps up even
+// when that thread is busy (and catches up in one go after a hitch). Order is kept.
+let batch: FromWorker[] | null = null;
+const flush = () => {
+  const b = batch;
+  batch = null;
+  if (b) scope.postMessage(b.length === 1 ? b[0] : { k: "batch", m: b });
+};
+const post = (m: FromWorker) => {
+  if (m.k !== "send") {
+    flush();
+    scope.postMessage(m);
+    return;
+  }
+  if (!batch) {
+    batch = [];
+    queueMicrotask(flush);
+  }
+  batch.push(m);
+};
 const core = createHostCore(post);
 
 self.onmessage = (e: MessageEvent<ToWorker>) => core.handle(e.data);

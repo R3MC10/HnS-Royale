@@ -12,6 +12,10 @@ export interface LobbyMeta {
   biome: string;
   size: string; // "auto" | "small" | "medium" | "large"
   state: "room" | "match"; // in the lobby room, or a match in progress
+  /** A new player can get in right now (open seat, or a running match still taking late joiners). */
+  joinable?: boolean;
+  /** Seconds left to join the running match (late join). */
+  lateLeft?: number;
 }
 
 export interface LobbyInfo extends LobbyMeta {

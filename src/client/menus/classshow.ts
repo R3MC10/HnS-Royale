@@ -7,7 +7,8 @@
 import { ASC_BY_ID } from "../../shared/content/ascendancies";
 import { BASE_BY_ID, STARTER_WEAPONS } from "../../shared/content/bases";
 import { ASCEND_LEVEL, CLASSES, CLASS_BY_ID, classWeapon, type ClassDef } from "../../shared/content/classes";
-import { ATTR_COLOR, SKILL_GEM_BY_ID, STARTER_SKILL, WEAPON_CLASS_NAME } from "../../shared/content/gems";
+import { ATTR_COLOR, SKILL_GEM_BY_ID, WEAPON_CLASS_NAME, classStarter } from "../../shared/content/gems";
+import { modLines } from "../../shared/content/passives";
 import { tagLine } from "../../shared/skills";
 import { lookCode, decodeLook } from "../../shared/look";
 import { applyProgression, totalMods } from "../../shared/progression";
@@ -51,7 +52,7 @@ export function classInfo(id: string): ClassInfo {
   const wb = STARTER_WEAPONS[wk];
   const m = totalMods(def.id, [], []);
   const s = applyProgression(defaultStats(), m, 1);
-  const sk = SKILL_GEM_BY_ID.get(STARTER_SKILL[wk] ?? "cinderbolt");
+  const sk = SKILL_GEM_BY_ID.get(classStarter(def.id, wk)); // the class's own starter, same pick as the server
   return {
     def,
     weaponKind: wk,
@@ -163,6 +164,7 @@ export function renderClassSelect(initial: string, onPick: (id: string) => void,
     const info = classInfo(id);
     const c = info.def;
     show.style.setProperty("--cs-tint", c.tint);
+    show.style.setProperty("--cs-color", c.color);
     show.replaceChildren();
 
     // Figure on a lit plinth
@@ -221,6 +223,11 @@ export function renderClassSelect(initial: string, onPick: (id: string) => void,
     if (info.skillId) sv.append(skillIconCopy(info.skillId, 26));
     sv.append(el("b", "", info.skillName), el("i", "", info.skillTags));
     sRow.append(sv);
+    const tRow = el("div", "m-cs-kitrow");
+    tRow.append(el("span", "m-cs-k", "Class trait"));
+    const tv = el("span", "m-cs-v m-cs-trait");
+    tv.append(el("b", "", c.trait.name), ...modLines(c.trait.mods).map((l) => el("i", "", l))); // one node per line: each translates on its own
+    tRow.append(tv);
     const pRow = el("div", "m-cs-kitrow");
     pRow.append(el("span", "m-cs-k", "Playstyle"), el("span", "m-cs-v m-cs-play", c.playstyle));
     const dRow = el("div", "m-cs-kitrow");
@@ -229,7 +236,7 @@ export function renderClassSelect(initial: string, onPick: (id: string) => void,
     for (let i = 1; i <= 3; i++) dv.append(el("i", i <= c.difficulty ? "on" : ""));
     dv.append(el("b", "", DIFFICULTY[c.difficulty]));
     dRow.append(dv);
-    kit.append(wRow, sRow, pRow, dRow);
+    kit.append(wRow, sRow, tRow, pRow, dRow);
     info2.append(kit);
 
     const asc = el("div", "m-cs-asc");
@@ -250,6 +257,7 @@ export function renderClassSelect(initial: string, onPick: (id: string) => void,
   for (const c of CLASSES) {
     const m = el("div", "m-medal" + (c.id === cur ? " sel" : "") + (locked ? " locked" : ""));
     m.dataset.cls = c.id;
+    m.style.setProperty("--cs-color", c.color);
     const cv = el("canvas");
     drawClassEmblem(cv, c.id, 58);
     m.append(cv, el("span", "", c.name));
@@ -274,16 +282,16 @@ export function renderClassSelect(initial: string, onPick: (id: string) => void,
 
 export const CLASS_SELECT_CSS = `
 .m-cs { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-.m-cs-show { --cs-tint: #5a4a26; position: relative; display: grid; grid-template-columns: minmax(220px, 40%) 1fr; gap: 6px 18px; min-height: 0;
+.m-cs-show { --cs-tint: #5a4a26; --cs-color: #d9b26a; position: relative; display: grid; grid-template-columns: minmax(220px, 40%) 1fr; gap: 6px 18px; min-height: 0;
   padding: 14px 18px 16px; border-radius: 6px; overflow: hidden;
   background: radial-gradient(ellipse 60% 70% at 22% 62%, color-mix(in srgb, var(--cs-tint) 55%, transparent), transparent 70%),
     linear-gradient(180deg, rgba(30,24,28,0.94), rgba(10,8,11,0.97));
-  border: 1px solid rgba(217,178,106,0.35);
+  border: 1px solid rgba(217,178,106,0.35); border-top: 2px solid color-mix(in srgb, var(--cs-color) 70%, transparent);
   box-shadow: 0 0 0 1px #050405, 0 0 0 4px rgba(18,14,16,0.9), 0 0 0 5px rgba(140,116,72,0.25), 0 24px 70px rgba(0,0,0,0.85), inset 0 0 80px rgba(0,0,0,0.55); }
 .m-cs-fig { position: relative; display: flex; align-items: flex-end; justify-content: center; min-height: 300px; }
 .m-cs-fig canvas { position: relative; width: 100%; max-width: 330px; height: auto; aspect-ratio: 360 / 460; }
 .m-cs-glow { position: absolute; left: 10%; right: 10%; bottom: 3%; height: 16%; border-radius: 50%;
-  background: radial-gradient(ellipse at center, rgba(255,200,120,0.28), color-mix(in srgb, var(--cs-tint) 40%, transparent) 45%, transparent 72%);
+  background: radial-gradient(ellipse at center, color-mix(in srgb, var(--cs-color) 45%, transparent), color-mix(in srgb, var(--cs-tint) 40%, transparent) 45%, transparent 72%);
   box-shadow: 0 0 0 1px rgba(217,178,106,0.18); }
 .m-cs-info { display: flex; flex-direction: column; gap: 9px; min-width: 0; }
 .m-cs-head { display: flex; align-items: center; gap: 12px; }
@@ -309,6 +317,9 @@ export const CLASS_SELECT_CSS = `
 .m-cs-v i { color: var(--m-dim); font-size: 12px; font-style: normal; }
 .m-cs-v canvas { width: 26px; height: 26px; border-radius: 4px; box-shadow: 0 0 0 1px #050405, 0 0 0 2px rgba(140,116,72,0.4); }
 .m-cs-play { color: #d8c8a6; line-height: 1.35; }
+.m-cs-trait b { color: color-mix(in srgb, var(--cs-color) 75%, #fff); }
+.m-cs-trait i { color: #d8c8a6; }
+.m-cs-name + .m-cs-attrs::before { content: ""; width: 10px; height: 10px; align-self: center; border-radius: 50%; background: var(--cs-color); box-shadow: 0 0 8px var(--cs-color); }
 .m-cs-diff i { display: inline-block; width: 12px; height: 12px; transform: rotate(45deg); background: #2a2224; box-shadow: inset 0 0 0 1px rgba(140,116,72,0.45); }
 .m-cs-diff i.on { background: linear-gradient(135deg, #f0c070, #a0501c); box-shadow: 0 0 6px rgba(240,160,80,0.55); }
 .m-cs-diff b { margin-left: 4px; }
@@ -326,7 +337,7 @@ export const CLASS_SELECT_CSS = `
 .m-medal:hover span { color: #f0dcb0; }
 .m-medal:active { transform: translateY(1px); }
 .m-medal.sel { background: radial-gradient(ellipse at 50% 35%, rgba(224,116,58,0.22), transparent 70%); }
-.m-medal.sel canvas { filter: none; box-shadow: 0 0 0 2px #f0c878, 0 0 18px rgba(240,180,90,0.7); }
+.m-medal.sel canvas { filter: none; box-shadow: 0 0 0 2px var(--cs-color, #f0c878), 0 0 18px color-mix(in srgb, var(--cs-color, #f0b45a) 70%, transparent); }
 .m-medal.sel span { color: #ffe2a8; }
 .m-medal.locked { cursor: default; opacity: 0.55; }
 .m-medal.locked:hover canvas { box-shadow: none; }

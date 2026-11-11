@@ -86,6 +86,8 @@ export interface MonsterSnap {
   rl?: 1; // rogue exile is dodge-rolling
   tm?: 0 | 1; // Breachway lane mode: team (mobs, exiles, structures)
   fc?: number; // Breachway spire / Core: id of the hero it is shooting at
+  es?: number; // Breachway structures: current energy shield
+  esm?: number; // Breachway structures: max energy shield
 }
 
 export interface ProjSnap {

@@ -589,6 +589,12 @@ export function progHitMult(attacker: ServerPlayer, target: HitTarget): number {
   return mult;
 }
 
+/**
+ * True while splash damage is being dealt: a splash hit must not splash again, or two players standing
+ * together bounce the same splash back and forth forever (stack overflow).
+ */
+let inSplash = false;
+
 /** After a hit landed for `dealt` damage: leech, splash, execute. */
 export function progAfterHit(attacker: ServerPlayer, dealt: number, target: HitTarget) {
   if (!attacker.alive || dealt <= 0) return;
@@ -604,17 +610,22 @@ export function progAfterHit(attacker: ServerPlayer, dealt: number, target: HitT
     // PvP: culling at 60% of the monster threshold; splash reaches other players near the target.
     const t = target.p;
     if (m.execute && t.alive && t.hp > 0 && t.hp <= (t.stats.maxHp * m.execute * PVP_CULL) / 100) dealPlayer(t, t.stats.maxHp * 2, attacker, `${attacker.name}'s cull`);
-    if (m.splash) splashPlayers(attacker, t, (dealt * m.splash) / 100);
+    if (m.splash && !inSplash) splashPlayers(attacker, t, (dealt * m.splash) / 100);
     return;
   }
   const t = target.m;
-  if (m.splash) splashPlayers(attacker, t, (dealt * m.splash * PVP_DAMAGE_MULT) / 100);
+  if (m.splash && !inSplash) splashPlayers(attacker, t, (dealt * m.splash * PVP_DAMAGE_MULT) / 100);
   if (m.execute && t.alive && t.hp > 0 && t.hp <= (t.maxHp * m.execute) / 100 && !bossIds.has(t.id)) hurtMonster(t, t.hp + 1, attacker.x, attacker.y, 0, attacker);
-  if (m.splash) {
+  if (m.splash && !inSplash) {
     const d = (dealt * m.splash) / 100;
-    for (const o of [...host.monsters.monsters.values()]) {
-      if (o === t || !o.alive || Math.hypot(o.x - t.x, o.y - t.y) > SPLASH_RADIUS + o.radius) continue;
-      hurtMonster(o, d, t.x, t.y, 0, attacker);
+    inSplash = true;
+    try {
+      for (const o of [...host.monsters.monsters.values()]) {
+        if (o === t || !o.alive || Math.hypot(o.x - t.x, o.y - t.y) > SPLASH_RADIUS + o.radius) continue;
+        hurtMonster(o, d, t.x, t.y, 0, attacker);
+      }
+    } finally {
+      inSplash = false;
     }
   }
 }
@@ -625,9 +636,15 @@ const PVP_CULL = 0.6;
 /** Splash / burst damage to players (other than the attacker and `skip`) near a point. */
 function splashPlayers(attacker: ServerPlayer, at: { x: number; y: number }, dmg: number, skip?: ServerPlayer, radius = SPLASH_RADIUS) {
   if (!host || dmg <= 0) return;
-  for (const o of host.players.values()) {
-    if (o === attacker || o === skip || o === at || !o.alive || !o.joined || Math.hypot(o.x - at.x, o.y - at.y) > radius + PLAYER_RADIUS) continue;
-    dealPlayer(o, dmg, attacker, `${attacker.name}'s splash`);
+  const outer = inSplash;
+  inSplash = true;
+  try {
+    for (const o of host.players.values()) {
+      if (o === attacker || o === skip || o === at || !o.alive || !o.joined || Math.hypot(o.x - at.x, o.y - at.y) > radius + PLAYER_RADIUS) continue;
+      dealPlayer(o, dmg, attacker, `${attacker.name}'s splash`);
+    }
+  } finally {
+    inSplash = outer;
   }
 }
 

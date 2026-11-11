@@ -83,6 +83,7 @@ export function totalMods(cls: string, alloc: Iterable<string>, ascAlloc: Iterab
   };
   const c = CLASS_BY_ID.get(cls);
   if (c) addMods({ str: c.base.str, dex: c.base.dex, int: c.base.int, armour: c.base.armour, evasion: c.base.evasion, barrier: c.base.barrier });
+  if (c?.trait) addMods(c.trait.mods); // signature class trait
   for (const id of alloc) {
     const n = PASSIVE_BY_ID.get(id);
     if (n) addMods(n.mods);

@@ -24,6 +24,7 @@ import { isGem } from "../shared/skills";
 import { openSkillsWith } from "./skillbar";
 import { chatIsOpen, insertItemLink, setChatItemTip } from "./menus/ingame"; // menus package: chat item links
 import { registerPanel } from "./options"; // menus package: Esc popup layer
+import { laneQuickSell } from "./lanehud"; // Breachway shop open: Ctrl+click sells
 
 export const CELL = 34; // px per grid cell
 
@@ -923,6 +924,7 @@ export class InventoryView {
         return;
       }
       if (e.ctrlKey || e.metaKey) {
+        if (laneQuickSell(item)) return;
         this.quickMove(item, src, e.shiftKey);
         return;
       }

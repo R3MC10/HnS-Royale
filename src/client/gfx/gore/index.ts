@@ -41,6 +41,7 @@ import { paintFootprint, paintFrost, paintEcto, paintLichtenberg, paintScorch, p
 import { paintedDecal, warmGoreArt, type DecalSet, type GibTheme } from "./painted";
 import { clearParticles, drawParticles, P_CLOT, P_DROP, P_EMBER, P_MIST, P_SHARD, P_SHIMMER, P_SMOKE, P_SPARK, P_WISP, spawnP, stepParticles } from "./particles";
 import { drawScreen, screenSplat, stepScreen } from "./screen";
+export { prewarmScreenGore } from "./screen";
 
 export { goreLevel } from "./core";
 

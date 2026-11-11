@@ -83,6 +83,9 @@ export interface HostRuntimeOptions {
 /** Seconds a dropped player's hero waits in the fight before it dies. */
 export const REJOIN_GRACE = 75;
 
+/** Seconds into the fight a new player can still join the running match (taking a bot's seat if full). */
+export const LATE_JOIN_SECS = 180;
+
 /** A player who dropped during the fight: their hero is parked on `conn` (never open). */
 interface Away {
   conn: HostConn;
@@ -106,6 +109,7 @@ export class HostRuntime {
   private matchTicks = 0;
   private endedFor = -1;
   private sawFight = false;
+  private lateWas = false;
   private fightTick = -1;
   private entries = new Map<number, Entry>(); // game player id -> participant
   private spawnSig = "";
@@ -226,7 +230,40 @@ export class HostRuntime {
       biome: this.settings.biome,
       size: this.settings.size,
       state: this.state,
+      joinable: this.state === "room" ? this.listed().length < this.settings.max : this.lateOpen() && (this.listed().length < this.settings.max || this.listed().some((o) => o.bot && o.inMatch)),
+      ...(this.lateOpen() ? { lateLeft: this.lateLeft() } : {}),
     };
+  }
+
+  // ---- late join ----------------------------------------------------------------------
+
+  /** Seconds left in the late-join window (0 when closed). Countdown counts as open. */
+  private lateLeft(): number {
+    if (this.state !== "match") return 0;
+    const g = this.gh.game;
+    if (g.phase === "countdown") return LATE_JOIN_SECS;
+    if (g.phase !== "fight" || this.fightTick < 0) return 0;
+    return Math.max(0, Math.ceil(LATE_JOIN_SECS - (this.matchTicks - this.fightTick) / TICK_RATE));
+  }
+
+  private lateOpen(): boolean {
+    return this.lateLeft() > 0;
+  }
+
+  /** A player arriving in the first minutes of a match goes straight in with a fresh hero. */
+  private lateJoin(m: Member, team?: 0 | 1) {
+    const g = this.gh.game;
+    m.ready = true;
+    this.joinMatch(m); // countdown: the Game hands them a free spawn point itself
+    const p = this.gh.conns.get(m.conn);
+    if (p && g.phase === "fight") {
+      g.lateSpawn(p, team);
+      const e = this.entries.get(p.id);
+      if (e && p.team !== undefined) e.team = p.team;
+    }
+    this.sys(`${m.name} joined the running match`);
+    this.broadcastState();
+    if (g.phase === "countdown") this.sendSpawns(true);
   }
 
   private cleanSettings(s: Partial<RoomSettings>, base?: RoomSettings): RoomSettings {
@@ -255,8 +292,15 @@ export class HostRuntime {
         }
         const back = this.state === "match" && !!rid && this.away.has(rid); // their hero is still in the match
         // A player always gets a full hall's bot seat (one that is not fighting right now).
+        let seatTeam: 0 | 1 | undefined;
         if (!m.bot && this.listed().length >= this.settings.max) {
-          const seat = this.listed().reverse().find((o) => o.bot && !o.inMatch);
+          let seat = this.listed().reverse().find((o) => o.bot && !o.inMatch);
+          if (!seat && !back && this.lateOpen()) {
+            // A full running match still taking late joiners: a random fighting bot gives up its seat.
+            const fighting = this.listed().filter((o) => o.bot && o.inMatch);
+            seat = fighting[Math.floor(Math.random() * fighting.length)];
+            if (seat) seatTeam = this.gh.conns.get(seat.conn)?.team;
+          }
           if (seat) this.removeBot(seat);
         }
         if (!back && this.listed().length >= this.settings.max) {
@@ -270,6 +314,10 @@ export class HostRuntime {
         m.cls = validCls(msg.cls);
         this.sys(`${m.name} entered the hall`);
         if (this.state === "match" && this.rejoin(m)) break;
+        if (this.state === "match" && !m.bot && this.lateOpen()) {
+          this.lateJoin(m, seatTeam);
+          break;
+        }
         this.broadcastState();
         if (this.state === "match") this.send(m, { t: "r-chat", from: "", text: "A match is in progress. You'll play in the next one.", sys: 1 });
         break;
@@ -538,7 +586,9 @@ export class HostRuntime {
     m.inMatch = true;
     this.send(m, { t: "r-go" });
     const p = this.gh.connect(m.conn);
+    this.gh.game.lateJoining = this.state === "match" && this.gh.game.phase === "fight";
     this.gh.handle(m.conn, { t: "join", name: m.name, weapon: "sword", cls: m.cls });
+    this.gh.game.lateJoining = false;
     this.entries.set(p.id, { pid: p.id, name: m.name, cls: m.cls, rid: m.rid, kills: 0, level: 1, loot: [], place: 0, diedTick: -1, left: false, ...(m.bot ? { bot: true } : {}) });
   }
 
@@ -645,6 +695,10 @@ export class HostRuntime {
     if (this.state !== "match") return;
     this.matchTicks++;
     const g = this.gh.game;
+    // The room list shows whether (and how long) the running match still takes late joiners.
+    const late = this.lateOpen();
+    if (late !== this.lateWas || (late && this.matchTicks % (10 * TICK_RATE) === 0)) this.o.onMeta?.(this.meta());
+    this.lateWas = late;
     if (g.phase === "countdown") this.sendSpawns();
     if (this.away.size) this.tickAway();
     if (g.phase === "fight" && !this.sawFight) {

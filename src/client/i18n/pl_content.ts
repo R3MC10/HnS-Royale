@@ -137,6 +137,13 @@ export const PL_CONTENT: Dict = {
   "War Hymn": "Hymn Wojenny", "Iron Verse": "Żelazna Zwrotka", Crescendo: "Crescendo", "Anthem of Ruin": "Hymn Zagłady", "Iron Chant": "Żelazny Zaśpiew",
   "Iron Lung": "Żelazne Płuco", Unbowed: "Nieugięty", "Marching Cadence": "Rytm Marszu", Drum: "Bęben", Refrain: "Refren",
 
+  // ---- class identity: starters, traits, generated tree regions ----
+  "Opening Cut": "Cięcie Otwierające", "Hazeward Sweep": "Zamach Mgielnej Straży",
+  "A quick, low slash with your dagger. Short and light, so you can cut and roll away before they answer.": "Szybkie, niskie cięcie sztyletem. Krótkie i lekkie, więc zdążysz ciąć i odturlać się, zanim przeciwnik odpowie.",
+  "Swing your staff in a wide, low arc that clips everything in front of you and pushes it back.": "Zatocz kosturem szeroki, niski łuk, który zahacza wszystko przed tobą i odpycha to do tyłu.",
+  "Pit-Fed": "Karmiony Areną", "Light Feet": "Lekkie Stopy", "First Cut": "Pierwsze Cięcie", "Dusk Drinker": "Pijący Zmierzch",
+  "Caged Flame": "Uwięziony Płomień", Scavenger: "Padlinożerca", "Out of the Haze": "Z Mgły", "Bell Toll": "Bicie Dzwonu",
+  Crossroads: "Rozstaje", "Wayfarer's Resolve": "Hart Wędrowca", "Path of Mastery": "Ścieżka Mistrzostwa", "Path of Endurance": "Ścieżka Wytrwałości",
   // ---- skill gems ----
   "Sundering Blow": "Cios Rozłamu", "Faultline Slam": "Uderzenie Uskoku", "Splinter Volley": "Salwa Drzazg", Cinderbolt: "Pocisk Zgliszcz", Frostgale: "Mroźna Wichura",
   Stormthread: "Burzowa Nić", "Shadow Lunge": "Wypad Cienia", "Ember Pact": "Pakt Żaru", "Pyre Effigy": "Kukła Stosu", "Ashen Mantle": "Popielny Płaszcz",
@@ -322,6 +329,7 @@ export const PL_CONTENT: Dict = {
   "{$a} entered the hall": "{a} wchodzi do sali", "{$a} was kicked": "{a} – wyrzucono z sali", "The hall is full ({n} players): no room for a bot.": "Sala jest pełna (graczy: {n}): brak miejsca na bota.",
   "The bot will play in the next match.": "Bot zagra w następnym meczu.", "The bots will play in the next match.": "Boty zagrają w następnym meczu.",
   "{$a} (bot) was sent away": "{a} (bot) – odesłano", "{$a} left the match": "{a} opuszcza mecz", "{$a} dropped out of the match": "{a} wypada z meczu",
+  "{$a} joined the running match": "{a} dołącza do trwającego meczu",
   "{$a} is back in the match": "{a} wraca do meczu", "{$a} is back, watching the match": "{a} wraca i ogląda mecz",
   "{$a} lost the connection: their hero waits {n} s for them": "{a} traci połączenie: bohater czeka na powrót gracza {n} s", "a lost connection": "utrata połączenia",
   "Lost the connection to the host. If the hall is still open, join it again within 75 seconds to get your hero back.": "Utracono połączenie z hostem. Jeśli sala jest nadal otwarta, dołącz do niej ponownie w ciągu 75 sekund, aby odzyskać bohatera.",

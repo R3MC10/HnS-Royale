@@ -3,6 +3,7 @@
 // Data: the server `stats` message (final Stats), the owner-only `prog` message and the skill bar.
 import { ASC_BY_ID } from "../shared/content/ascendancies";
 import { CLASS_BY_ID } from "../shared/content/classes";
+import { modLines } from "../shared/content/passives";
 import { DEF, armourReduction, deflectChance, effectiveRes, hitChance } from "../shared/defence";
 import { BAR_SIZE, computeSkill, weaponOf, type SkillAction } from "../shared/skills";
 import type { Stats } from "../shared/stats";
@@ -230,6 +231,12 @@ function render() {
     <div class="attr" title="Strength: from your class, passives and gear"><b style="color:#e07a5a">${d ? r0(d.str) : "–"}</b><span>Strength</span></div>
     <div class="attr" title="Dexterity: from your class, passives and gear"><b style="color:#7fd07a">${d ? r0(d.dex) : "–"}</b><span>Dexterity</span></div>
     <div class="attr" title="Intelligence: from your class, passives and gear"><b style="color:#7aa8e8">${d ? r0(d.int) : "–"}</b><span>Intelligence</span></div></div>`;
+  if (cls?.trait) {
+    // signature class trait (innate, always on): name in the class colour, one line per effect
+    h += `<div class="sec"><h3 class="pg-h">Class trait</h3><div class="row" title="Innate to your class, every match"><span style="color:${cls.color};font-weight:600">${esc(cls.trait.name)}</span></div>${modLines(cls.trait.mods)
+      .map((l) => `<div class="row"><span style="color:var(--pg-ink)">${esc(l)}</span></div>`)
+      .join("")}</div>`;
+  }
   if (s) {
     h += offence(s);
     const capv = Math.min(DEF.resHardCap, DEF.resDefaultCap + (s.maxRes || 0));

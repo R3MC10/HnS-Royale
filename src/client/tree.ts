@@ -3,7 +3,7 @@
 // path if you have the points). The server validates every allocation.
 import { tr } from "./i18n";
 import { ASC_BY_ID, type AscendancyDef, type AscNode } from "../shared/content/ascendancies";
-import { ASCEND_LEVEL, CLASS_BY_ID } from "../shared/content/classes";
+import { ASCEND_LEVEL, CLASSES, CLASS_BY_ID } from "../shared/content/classes";
 import { PASSIVE_BY_ID, PASSIVE_NODES, modLines, type PassiveNode } from "../shared/content/passives";
 import { JEWEL_BASE_BY_ID, isJewel } from "../shared/content/jewels";
 import { RARITY_COLORS } from "../shared/content/loot";
@@ -542,6 +542,19 @@ function draw() {
   }
   g.restore();
 
+  // Class heatmap (cached canvas, one drawImage per frame): each region glows in its class colour.
+  const myCls = progState.msg?.cls;
+  const reg = asc ? null : regions();
+  if (reg) {
+    const hm = heatLayer(myCls ?? "");
+    const [hx, hy] = T(hm.x0, hm.y0);
+    g.save();
+    g.imageSmoothingEnabled = true;
+    g.drawImage(hm.cv, hx, hy, hm.w * c.z, hm.h * c.z);
+    g.restore();
+  }
+  const regionOf = (id: string) => (reg ? reg.owner.get(id) : undefined);
+
   const reach = new Set<string>();
   for (const a of alloc) for (const l of nodes.get(a)?.links ?? []) if (!alloc.has(l)) reach.add(l);
   const preview = new Set(hover ? pathTo(nodes, alloc, hover) : []);
@@ -566,7 +579,9 @@ function draw() {
       g.moveTo(ax, ay);
       g.lineTo(bx, by);
       g.stroke();
-      g.strokeStyle = both ? accent : pv ? (previewOk ? "rgba(140,200,255,0.85)" : "rgba(255,110,80,0.7)") : one ? "rgba(216,179,106,0.35)" : "#2a262e";
+      const ra = regionOf(n.id);
+      const idle = ra && ra === regionOf(l) ? reg!.edge.get(ra)! : "#2a262e"; // links inside one region pick up its colour
+      g.strokeStyle = both ? accent : pv ? (previewOk ? "rgba(140,200,255,0.85)" : "rgba(255,110,80,0.7)") : one ? "rgba(216,179,106,0.35)" : idle;
       g.lineWidth = Math.max(1, (both ? 4 : 3) * c.z);
       if (both) {
         g.shadowColor = accent;
@@ -581,7 +596,6 @@ function draw() {
   }
 
   // Nodes
-  const myCls = progState.msg?.cls;
   for (const n of nodes.values()) {
     const [x, y] = T(n.x, n.y);
     if (x < -60 || y < -60 || x > w + 60 || y > h + 60) continue;
@@ -643,7 +657,7 @@ function draw() {
     if (n.kind === "jewel") drawJewelSocket(g, x, y, r, n.id, on, time);
     // rim
     g.lineWidth = Math.max(1, (n.kind === "small" ? (on && icon ? 2.2 : 1.5) : 2.5) * c.z);
-    g.strokeStyle = on ? "#ffe7b0" : can ? `rgba(140,200,255,${0.55 + 0.4 * Math.sin(time * 4)})` : pv ? (previewOk ? "#8cc8ff" : "#ff6e50") : n.kind === "keystone" ? "#8a6a9a" : n.kind === "notable" ? "#8f7646" : "#57505c";
+    g.strokeStyle = on ? "#ffe7b0" : can ? `rgba(140,200,255,${0.55 + 0.4 * Math.sin(time * 4)})` : pv ? (previewOk ? "#8cc8ff" : "#ff6e50") : n.kind === "keystone" ? "#8a6a9a" : regionOf(n.id) ? reg!.rim.get(regionOf(n.id)!)![n.kind === "small" || n.kind === "jewel" ? 0 : 1] : n.kind === "notable" ? "#8f7646" : "#57505c";
     if (hov) g.strokeStyle = "#ffffff";
     if (n.kind === "jewel" && dragJewel && !asc) g.strokeStyle = dropOver === n.id ? (on ? "#9fffb0" : "#ff6e50") : on ? `rgba(140,255,170,${0.5 + 0.4 * Math.sin(time * 6)})` : g.strokeStyle;
     g.stroke();
@@ -670,7 +684,7 @@ function draw() {
       g.restore();
     }
     // labels for notables / keystones when zoomed in
-    if ((n.kind === "notable" || n.kind === "keystone" || n.kind === "start" || n.kind === "ascStart") && c.z > 0.6) {
+    if ((n.kind === "notable" || n.kind === "keystone" || n.kind === "ascStart") && c.z > 0.6) {
       g.save();
       g.font = `${n.kind === "keystone" ? 600 : 500} ${Math.round(Math.max(10, 11 * c.z))}px "Cinzel", "Palatino Linotype", Georgia, serif`;
       g.textAlign = "center";
@@ -678,10 +692,176 @@ function draw() {
       g.fillStyle = on ? "#ffe7b0" : n.kind === "keystone" ? "#c8a8d8" : "#a8987c";
       g.shadowColor = "#000";
       g.shadowBlur = 4;
-      const label = n.kind === "start" ? CLASS_BY_ID.get(n.cls ?? "")?.name ?? n.name : n.name;
-      g.fillText(tr(label), x, y + r + 4);
+      g.fillText(tr(n.name), x, y + r + 4);
       g.restore();
     }
+  }
+  if (reg) drawRegionLabels(g, T, c.z, myCls); // class start labels (start nodes have no label above)
+}
+
+// ---- class regions (heatmap) ---------------------------------------------------------------------
+// Every node belongs to the class start it is fewest links from (never walking through another start);
+// a soft colour field around each region's nodes, strongest at the start and fading with distance, is
+// painted ONCE into an offscreen canvas in world space and only blitted per frame. Your own class
+// region is drawn at full strength, the others dimmed. Data-driven: a new class in CLASSES gets a
+// region (and a label) here with no extra code.
+
+interface Regions {
+  owner: Map<string, string>; // node id -> class id
+  weight: Map<string, number>; // node id -> 0..1 (1 at the start, fading with links away)
+  edge: Map<string, string>; // class id -> idle link colour
+  rim: Map<string, [small: string, big: string]>; // class id -> idle rim colours
+}
+let regionCache: Regions | null = null;
+let heatCache: { key: string; cv: HTMLCanvasElement; x0: number; y0: number; w: number; h: number } | null = null;
+
+const hexRgb = (hex: string): [number, number, number] => {
+  const v = parseInt(hex.replace("#", "").padEnd(6, "0").slice(0, 6), 16);
+  return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+};
+const mixHex = (a: string, b: string, t: number) => {
+  const A = hexRgb(a);
+  const B = hexRgb(b);
+  return `rgb(${A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(",")})`;
+};
+
+function regions(): Regions {
+  if (regionCache) return regionCache;
+  const owner = new Map<string, string>();
+  const hops = new Map<string, number>();
+  const q: string[] = [];
+  for (const c of CLASSES) {
+    if (!PASSIVE_BY_ID.has(c.start)) continue;
+    owner.set(c.start, c.id);
+    hops.set(c.start, 0);
+    q.push(c.start);
+  }
+  for (let i = 0; i < q.length; i++) {
+    const id = q[i];
+    for (const l of PASSIVE_BY_ID.get(id)!.links) {
+      if (hops.has(l) || PASSIVE_BY_ID.get(l)?.kind === "start") continue;
+      hops.set(l, hops.get(id)! + 1);
+      owner.set(l, owner.get(id)!);
+      q.push(l);
+    }
+  }
+  const weight = new Map<string, number>();
+  for (const [id, h] of hops) weight.set(id, Math.pow(0.5, h / 2.6));
+  const edge = new Map<string, string>();
+  const rim = new Map<string, [string, string]>();
+  for (const c of CLASSES) {
+    edge.set(c.id, mixHex("#2a262e", c.color, 0.3));
+    rim.set(c.id, [mixHex("#57505c", c.color, 0.35), mixHex("#8f7646", c.color, 0.45)]);
+  }
+  return (regionCache = { owner, weight, edge, rim });
+}
+
+/** The heat field for the viewer's class (cached; rebuilt only when the class changes). */
+function heatLayer(myCls: string) {
+  if (heatCache && heatCache.key === myCls) return heatCache;
+  const reg = regions();
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (const n of PASSIVE_NODES) {
+    x0 = Math.min(x0, n.x);
+    y0 = Math.min(y0, n.y);
+    x1 = Math.max(x1, n.x);
+    y1 = Math.max(y1, n.y);
+  }
+  const pad = 220;
+  x0 -= pad;
+  y0 -= pad;
+  x1 += pad;
+  y1 += pad;
+  const S = 1 / 5; // heat pixels per world unit (smoothly upscaled when drawn)
+  const W = Math.ceil((x1 - x0) * S);
+  const H = Math.ceil((y1 - y0) * S);
+  const cls = CLASSES.filter((c) => PASSIVE_BY_ID.has(c.start));
+  const col = cls.map((c) => hexRgb(c.color));
+  const emph = cls.map((c) => (!myCls || c.id === myCls ? 1 : 0.3)); // your region full, the others dimmed
+  // blobs per class: [x, y, weight, 1 / (2 sigma^2)] in heat pixels
+  const blobs = cls.map((c) => {
+    const out: number[] = [];
+    for (const n of PASSIVE_NODES) {
+      if (reg.owner.get(n.id) !== c.id) continue;
+      const big = n.kind === "start";
+      const sg = (big ? 150 : 95) * S;
+      out.push((n.x - x0) * S, (n.y - y0) * S, (reg.weight.get(n.id) ?? 0) * (big ? 1.6 : 1), 1 / (2 * sg * sg));
+    }
+    return out;
+  });
+  const cv = document.createElement("canvas");
+  cv.width = W;
+  cv.height = H;
+  const g = cv.getContext("2d")!;
+  const img = g.createImageData(W, H);
+  const px = img.data;
+  const f = new Float32Array(cls.length);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      let tot = 0;
+      let raw = 0;
+      for (let k = 0; k < cls.length; k++) {
+        const b = blobs[k];
+        let v = 0;
+        for (let i = 0; i < b.length; i += 4) {
+          const dx = x - b[i];
+          const dy = y - b[i + 1];
+          const e = (dx * dx + dy * dy) * b[i + 3];
+          if (e < 6) v += b[i + 2] * Math.exp(-e);
+        }
+        raw += v;
+        f[k] = v * emph[k];
+        tot += f[k];
+      }
+      if (tot < 0.004) continue;
+      // colour: the regions blended by strength (soft borders); alpha: the emphasised strength
+      let r = 0;
+      let gg = 0;
+      let bb = 0;
+      for (let k = 0; k < cls.length; k++) {
+        const t = (raw > 0 ? f[k] / emph[k] / raw : 0) || 0;
+        r += col[k][0] * t;
+        gg += col[k][1] * t;
+        bb += col[k][2] * t;
+      }
+      const o = (y * W + x) * 4;
+      px[o] = r;
+      px[o + 1] = gg;
+      px[o + 2] = bb;
+      px[o + 3] = 255 * 0.42 * (1 - Math.exp(-raw * 1.4)) * (tot / raw); // density, then scaled by emphasis so dimmed regions stay dim
+    }
+  }
+  g.putImageData(img, 0, 0);
+  return (heatCache = { key: myCls, cv, x0, y0, w: W / S, h: H / S });
+}
+
+/** Class name (in its colour) just outside each start, at every zoom; yours is marked. */
+function drawRegionLabels(g: CanvasRenderingContext2D, T: (x: number, y: number) => readonly [number, number], z: number, myCls: string | undefined) {
+  for (const c of CLASSES) {
+    const s = PASSIVE_BY_ID.get(c.start);
+    if (!s) continue;
+    const mine = c.id === myCls;
+    const k = Math.min(1.3, Math.max(0.8, z));
+    const [x, y0] = T(s.x, s.y);
+    const y = y0 + 26 * z + 10 * k; // just under the start node, where its name used to be
+    g.save();
+    g.globalAlpha = mine || !myCls ? 1 : 0.72;
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.font = `${mine ? 700 : 600} ${Math.round((mine ? 15 : 13) * k)}px "Cinzel", "Palatino Linotype", Georgia, serif`;
+    g.shadowColor = "#000";
+    g.shadowBlur = 6;
+    g.fillStyle = mixHex(c.color, "#ffffff", 0.25);
+    g.fillText(tr(c.name), x, y);
+    if (mine) {
+      g.font = `600 ${Math.round(10 * k)}px "Cinzel", "Palatino Linotype", Georgia, serif`;
+      g.fillStyle = "#ffe7b0";
+      g.fillText(tr("Your class"), x, y + Math.round(15 * k));
+    }
+    g.restore();
   }
 }
 

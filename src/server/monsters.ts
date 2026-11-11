@@ -68,6 +68,9 @@ export interface Monster {
   team?: 0 | 1;
   /** Breachway spire / Core: id of the hero it is shooting at (0 = none). */
   focus?: number;
+  /** Breachway structures: recharging energy shield over life (absent = none). */
+  es?: number;
+  esMax?: number;
 }
 
 export interface Camp {
@@ -716,6 +719,10 @@ export class MonsterSystem {
     X.extSnap(m, s);
     if (m.team !== undefined) s.tm = m.team;
     if (m.focus) s.fc = m.focus;
+    if (m.esMax) {
+      s.es = Math.ceil(m.es ?? 0);
+      s.esm = Math.ceil(m.esMax);
+    }
     return s;
   }
 

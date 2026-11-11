@@ -34,6 +34,7 @@ import {
 } from "./keybinds";
 import { getSettings, onChange, resetSettings, setSetting, type Group } from "./settings";
 import { uiSound } from "./audio";
+import { copyHitchReport, hitchCount } from "./hitchlog";
 
 // ---- panel registry (Esc closes these before opening the menu) -------------------------
 
@@ -107,6 +108,7 @@ const CSS = `
   box-shadow: 0 0 0 1px #4a3e3a, inset 0 1px 0 rgba(255,220,170,0.12), 0 2px 6px rgba(0,0,0,0.6); transition: color .12s, box-shadow .12s, background .12s; }
 .hm-btn:hover, .hm-btn:focus-visible { color: #ffe2a8; outline: none; background: linear-gradient(180deg, #342a2a 0%, #201a1a 100%);
   box-shadow: 0 0 0 1px #9a7a48, inset 0 1px 0 rgba(255,220,170,0.2), 0 0 14px rgba(200,140,60,0.25); }
+.hm-btn.ho-act { width: auto; margin: 0; padding: 7px 14px; font-size: 12px; letter-spacing: 2px; }
 .hm-btn.blood { color: #f6e2c0; background: linear-gradient(180deg, #7a1c14 0%, #4e0f0a 70%, #3a0a07 100%); box-shadow: 0 0 0 1px #8c3424, inset 0 1px 0 rgba(255,170,130,0.25), 0 2px 6px rgba(0,0,0,0.6); }
 .hm-btn.blood:hover, .hm-btn.blood:focus-visible { background: linear-gradient(180deg, #942820 0%, #5e140e 100%); box-shadow: 0 0 0 1px #d0603e, 0 0 16px rgba(220,80,40,0.35); }
 .hm-keys { margin: 14px 0 0; padding: 8px 10px; text-align: left; border-radius: 4px; background: rgba(0,0,0,0.28);
@@ -585,7 +587,8 @@ type RowDef =
   | { k: "tog"; g: Group; key: string; label: string; desc?: string }
   | { k: "seg"; g: Group; key: string; label: string; desc?: string; opts: [Val, string][] }
   | { k: "sl"; g: Group; key: string; label: string; desc?: string; min: number; max: number; step: number; fmt: (v: number) => string }
-  | { k: "info"; label: string; desc?: string; html: () => string };
+  | { k: "info"; label: string; desc?: string; html: () => string }
+  | { k: "btn"; label: string; desc?: string; text: string; run: () => void };
 
 const pct = (v: number) => Math.round(v * 100) + "%";
 
@@ -622,6 +625,16 @@ const ROWS: Record<Group, RowDef[]> = {
     { k: "sec", text: "Performance overlay" },
     { k: "tog", g: "graphics", key: "showFps", label: "Show FPS" },
     { k: "tog", g: "graphics", key: "showPing", label: "Show ping" },
+    {
+      k: "btn",
+      label: "Freeze log",
+      desc: "Frames that froze for over 150 ms and what happened just before. Paste it into a bug report.",
+      text: "Copy freeze log",
+      run: () => {
+        const n = hitchCount();
+        void copyHitchReport().then((ok) => note(!ok ? "Could not copy the freeze log." : n ? `Freeze log copied (${n} freezes).` : "Freeze log copied (no freezes so far).", ok ? "" : "err"));
+      },
+    },
   ],
   interface: [
     { k: "sec", text: "Layout" },
@@ -692,6 +705,8 @@ function renderRow(r: RowDef): HTMLElement {
   const { row, ctl } = rowShell(r.label, r.desc);
   if (r.k === "info") {
     ctl.innerHTML = r.html();
+  } else if (r.k === "btn") {
+    ctl.appendChild(button(r.text, r.run, "hm-btn ho-act"));
   } else if (r.k === "tog") {
     const b = el("button", "ho-tog");
     b.type = "button";

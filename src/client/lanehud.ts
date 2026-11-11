@@ -58,6 +58,27 @@ let lastPanelKey = "";
 let lastGold = -1;
 let pending: { kind: "buy" | "sell"; gold: number; at: number } | null = null;
 let confirmSell = { id: -1, at: 0 };
+
+/** Shop open: Ctrl+click in the inventory panel sells (worn gear too). Returns false when the shop is closed. */
+export function laneQuickSell(it: Item): boolean {
+  if (!shopOpen || !st) return false;
+  const now = performance.now();
+  if (it.r >= 2 && !(confirmSell.id === it.id && now - confirmSell.at < 3000)) {
+    confirmSell = { id: it.id, at: now };
+    quickNote = { text: t("Ctrl+click {name} again to sell for {n} gold", { name: it.n, n: laneSellValue(it) }), at: now };
+    playSfx("ui.click");
+    lastPanelKey = "";
+    drawShop();
+    return true;
+  }
+  confirmSell = { id: -1, at: 0 };
+  quickNote = null;
+  pending = { kind: "sell", gold: st.g, at: now };
+  hideTips();
+  send({ t: "shop", a: "sell", id: it.id });
+  return true;
+}
+let quickNote: { text: string; at: number } | null = null;
 let hoverKey = "";
 
 export const isLaneMode = () => currentMap().params.mode === "lanes";
@@ -453,7 +474,8 @@ function drawShop() {
     const cls = tab === "enhance" ? (e.it.id === selId ? " sel" : "") : confirmSell.id === e.it.id ? " cf" : "";
     h += `<div class="bi${cls}" data-b="${i}" style="grid-column:${e.x + 1}/span ${fp.w};grid-row:${e.y + 1}/span ${fp.h};border-color:${RARITY_COLORS[e.it.r] ?? "#3a3a52"}66"><canvas data-bc="${i}"></canvas></div>`;
   });
-  h += `</div><div class="note">${tab === "enhance" ? "Click an equipped or carried item to work on it." : "Click an item to sell it for a quarter of its price (rare and better: click twice). H or Esc closes."}</div></div></div>`;
+  const qn = quickNote && performance.now() - quickNote.at < 3000 ? `<b>${quickNote.text}</b><br>` : "";
+  h += `</div><div class="note">${qn}${tab === "enhance" ? "Click an equipped or carried item to work on it." : "Click an item to sell it for a quarter of its price (rare and better: click twice). Ctrl+click items in your inventory to sell them, worn gear too. H or Esc closes."}</div></div></div>`;
   panel.innerHTML = h;
   // Paint icons (the inventory's own painted item icons).
   const dpr = window.devicePixelRatio || 1;

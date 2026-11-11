@@ -11,6 +11,7 @@ export type ToWorker =
   | { k: "msg"; id: number; d: string }
   | { k: "close"; id: number }
   | { k: "hidden"; v: boolean }
+  | { k: "hub"; port: number; token: string } // desktop app: connect to the LAN relay hub from here
   | { k: "shutdown"; reason: string };
 
 export type FromWorker =
@@ -19,7 +20,10 @@ export type FromWorker =
   | { k: "close"; id: number; reason: string }
   | { k: "meta"; meta: unknown }
   | { k: "lag"; ms: number }
-  | { k: "error"; text: string }; // an exception inside the host (the game keeps running)
+  | { k: "error"; text: string } // an exception inside the host (the game keeps running)
+  | { k: "problem"; text: string } // shown as is in the hall chat
+  | { k: "hubfail"; port: number; token: string } // the hub socket could not open here: the page connects instead
+  | { k: "batch"; m: FromWorker[] }; // several messages from one tick (hostworker.ts), in order
 
 export interface HostCore {
   handle(m: ToWorker): void;
@@ -61,6 +65,91 @@ export function createHostCore(post: (m: FromWorker) => void): HostCore {
         post({ k: "close", id, reason: reason ?? "closed" });
         // The bridge confirms with {k:"close"} which removes it from the runtime.
       },
+    };
+  }
+
+  // ---- desktop app LAN hub (electron/main.mjs), connected from here so LAN guests' messages never
+  // queue behind the host page's main thread (its panels, chunk builds, garbage collection) ----
+  /** Hub guest ids live above the bridge's own peer ids. */
+  const HUB_BASE = 1 << 24;
+  let hub: WebSocket | null = null;
+  const hubSend = (m: unknown) => {
+    if (hub?.readyState === 1) hub.send(JSON.stringify(m));
+  };
+  function hubConn(hid: number): HostConn {
+    const id = HUB_BASE + hid;
+    let open = true;
+    return {
+      get open() {
+        return open && conns.has(id);
+      },
+      send: (d) => {
+        if (open) hubSend({ t: "send", id: hid, d });
+      },
+      close: () => {
+        if (!open) return;
+        open = false;
+        hubSend({ t: "close", id: hid });
+        // Leave the runtime asynchronously, like a bridge peer (never re-enter it from inside its own call).
+        queueMicrotask(() => {
+          const c = conns.get(id);
+          if (!c || !rt) return;
+          conns.delete(id);
+          rt.close(c);
+        });
+      },
+    };
+  }
+  function connectHub(port: number, token: string) {
+    if (hub || typeof WebSocket === "undefined") return post({ k: "hubfail", port, token });
+    let opened = false;
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/?host=${encodeURIComponent(token)}`);
+    hub = ws;
+    ws.onopen = () => (opened = true);
+    ws.onmessage = (e) => {
+      let m: { t: string; id: number; d?: string };
+      try {
+        m = JSON.parse(String(e.data));
+      } catch {
+        return;
+      }
+      if (!rt || typeof m.id !== "number") return;
+      const id = HUB_BASE + m.id;
+      try {
+        if (m.t === "open") {
+          const old = conns.get(id);
+          if (old) {
+            conns.delete(id);
+            rt.close(old);
+          }
+          const c = hubConn(m.id);
+          conns.set(id, c);
+          rt.open(c, false);
+        } else if (m.t === "msg" && typeof m.d === "string") {
+          const c = conns.get(id);
+          if (c) rt.message(c, m.d);
+        } else if (m.t === "close") {
+          const c = conns.get(id);
+          if (c) {
+            conns.delete(id);
+            rt.close(c);
+          }
+        }
+      } catch (err) {
+        reportError("hub", err);
+      }
+    };
+    ws.onclose = () => {
+      if (hub !== ws) return;
+      hub = null;
+      for (const [id, c] of [...conns]) {
+        if (id < HUB_BASE) continue;
+        conns.delete(id);
+        rt?.close(c);
+      }
+      if (stopped) return;
+      if (!opened) post({ k: "hubfail", port, token }); // never connected from the worker: the page tries
+      else post({ k: "problem", text: "The local network relay stopped: players on your network join over the internet relays instead." });
     };
   }
 
@@ -126,6 +215,9 @@ export function createHostCore(post: (m: FromWorker) => void): HostCore {
           case "hidden":
             rt?.setHostHidden(m.v);
             break;
+          case "hub":
+            connectHub(m.port, m.token);
+            break;
           case "shutdown":
             rt?.shutdown(m.reason);
             break;
@@ -137,6 +229,11 @@ export function createHostCore(post: (m: FromWorker) => void): HostCore {
     stop() {
       stopped = true;
       if (timer) clearTimeout(timer);
+      try {
+        hub?.close();
+      } catch {
+        /* ignore */
+      }
     },
   };
 }

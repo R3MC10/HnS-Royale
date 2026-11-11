@@ -1,8 +1,20 @@
-// The passive tree ("the Lattice"): an original, royale-sized tree (~110 nodes). Eight class starts
-// sit on an outer ring split into six attribute regions (INT, DEX/INT, DEX, STR/DEX, STR, INT/STR;
-// the pure DEX and INT regions hold two classes each). The ring is shared travel, six spokes lead
-// to a central hub, keystones sit between the spokes and every class has an outward wing.
+// The passive tree ("the Lattice"): an original, royale-sized tree (~110 nodes). The class starts
+// sit on an outer ring split into attribute regions (INT, DEX/INT, DEX, STR/DEX, STR, INT/STR; the
+// pure DEX and INT regions hold two classes each). The ring is shared travel, spokes lead to a
+// central hub, keystones sit between the spokes and every class has an outward wing.
+//
+// The class regions are DATA-DRIVEN from CLASSES (classes.ts). To add a class:
+//   1. Add its ClassDef to CLASSES (id, start: "start_<id>", attrs, color, starter, trait ...).
+//      `treeDeg` places its start on the ring; leave it out and the class lands in the widest gap.
+//   2. Done: the builder below gives it a start node, its own ring arc to the next start, a short
+//      spoke joining the nearest existing spoke, and an outward wing, all generated from its
+//      attributes. For hand-made nodes add a CLASS_TREE entry (any part: startMods / ring / spoke / wings).
+//   3. Give the new names Polish entries in src/client/i18n/pl_content.ts (the generated notables
+//      reuse a few shared names that are translated already). The client heatmap follows by itself.
+// Existing node ids never depend on class order: ring arcs, spokes and wings use the ids in CLASS_TREE.
 // Stat keys are documented in PASSIVE_LABELS; the math lives in src/shared/progression.ts.
+
+import { CLASSES, type ClassDef } from "./classes";
 
 /** Every stat / effect a passive or ascendancy node can grant. */
 export type PassiveKey =
@@ -217,20 +229,133 @@ const R = 430;
 const rad = (deg: number) => (deg * Math.PI) / 180;
 const polar = (deg: number, r: number) => ({ x: Math.cos(rad(deg)) * r, y: Math.sin(rad(deg)) * r });
 
-/** Class starts on the ring (degrees; -90 = up). */
-const STARTS: [cls: string, name: string, deg: number, mods: PassiveMods][] = [
-  ["gloamcaller", "Gloamcaller's Mark", -104, { int: 8 }],
-  ["lanternwright", "Lanternwright's Mark", -76, { int: 8 }],
-  ["mistrunner", "Mistrunner's Mark", -30, { dex: 4, int: 4 }],
-  ["harrier", "Harrier's Mark", 16, { dex: 8 }],
-  ["gutterblade", "Gutterblade's Mark", 44, { dex: 8 }],
-  ["drifter", "Drifter's Mark", 90, { str: 4, dex: 4 }],
-  ["reaver", "Reaver's Mark", 150, { str: 8 }],
-  ["bellwarden", "Bellwarden's Mark", 210, { int: 4, str: 4 }],
-];
-for (const [cls, name, deg, mods] of STARTS) {
+/**
+ * Per-class tree data, keyed by class id. Everything is optional: a class in CLASSES with no entry
+ * here (or a partial one) gets generated defaults from its attributes (see the header comment).
+ *  - ring:  the ring arc from this class's start clockwise to the NEXT class start (ids `<ring.id>_<i>`)
+ *  - spoke: a spoke from this class (its start, or the first node of its ring arc) to the hub
+ *  - wings: outward branches from the start (ids `<wing.id>_<i>`; `deg` is the branch direction)
+ */
+interface ClassTreeSpec {
+  startMods?: PassiveMods;
+  ring?: { id: string; specs: Spec[] };
+  spoke?: { key: string; from: "start" | "ring"; specs: Spec[] } | null;
+  wings?: { id: string; deg: number; specs: Spec[] }[];
+}
+
+const CLASS_TREE: Record<string, ClassTreeSpec> = {
+  gloamcaller: {
+    startMods: { int: 8 },
+    ring: { id: "gate_int", specs: [{ name: "Gate of the Mind", mods: { int: 10 } }] },
+    spoke: { key: "int", from: "ring", specs: [S({ barrier: 10 }), S({ mana: 10 }), N("Gathered Dusk", { barrierInc: 20, manaInc: 15, spirit: 20 }), S({ int: 6 })] },
+    wings: [{ id: "wing_gloamcaller", deg: -118, specs: [S({ barrier: 12 }), S({ spellInc: 8 }), N("Dusk Litany", { spellInc: 20, castSpeed: 6 }), S({ barrierInc: 10 }), N("Veilwright", { barrierInc: 30, barrier: 20 })] }],
+  },
+  lanternwright: {
+    startMods: { int: 8 },
+    ring: { id: "ring_lm", specs: [S({ barrier: 12 }), S({ int: 6 }), N("Lamplit Fog", { evasion: 30, barrier: 20, dex: 5, int: 5 }), S({ evasion: 25 })] },
+    spoke: null, // shares the INT spoke through the Gate of the Mind
+    wings: [{ id: "wing_lanternwright", deg: -62, specs: [S({ mana: 10 }), S({ castSpeed: 4 }), N("Ember Lexicon", { spellInc: 20, castSpeed: 8, manaRegenInc: 20 }), S({ spellInc: 8 }), N("Kindled Glass", { barrier: 25, fullBarrierDmg: 15 })] }],
+  },
+  mistrunner: {
+    startMods: { dex: 4, int: 4 },
+    ring: { id: "ring_mh", specs: [S({ dex: 6 }), S({ castSpeed: 4 }), N("Quickened Mind", { castSpeed: 8, atkSpeed: 6 }), S({ atkSpeed: 4 })] },
+    spoke: { key: "dexint", from: "start", specs: [S({ evasion: 25 }), S({ barrier: 10 }), N("Drifting Haze", { evasionInc: 15, barrierInc: 15 }), S({ dex: 3, int: 3 })] },
+    wings: [{ id: "wing_mistrunner", deg: -30, specs: [S({ evasion: 25 }), S({ atkSpeed: 4 }), N("Reed Forms", { dmgInc: 14, atkSpeed: 6 }), S({ dodgeCdRed: 6 }), N("Tidal Footing", { evasion: 40, dodgeCdRed: 10, regen: 1 })] }],
+  },
+  harrier: {
+    startMods: { dex: 8 },
+    ring: { id: "gate_dex", specs: [{ name: "Gate of the Hand", mods: { dex: 10 } }] },
+    spoke: { key: "dex", from: "ring", specs: [S({ atkSpeed: 4 }), S({ evasion: 25 }), N("Hunter's Cadence", { atkSpeed: 10, moveInc: 3, spirit: 15 }), S({ dex: 6 })] },
+    wings: [{ id: "wing_harrier", deg: 4, specs: [S({ atkSpeed: 4 }), S({ dmgInc: 6 }), N("Fletcher's Rhythm", { atkSpeed: 10, dmgInc: 10 }), S({ evasion: 25 }), N("Long Shadow", { firstHitDmg: 20, reach: 12 })] }],
+  },
+  gutterblade: {
+    startMods: { dex: 8 },
+    ring: { id: "ring_gd", specs: [S({ moveInc: 3 }), S({ evasionInc: 12 }), N("Road-Worn Soles", { moveInc: 6, dodgeCdRed: 10 }), S({ dex: 6 })] },
+    spoke: null, // shares the DEX spoke through the Gate of the Hand
+    wings: [{ id: "wing_gutterblade", deg: 56, specs: [S({ evasion: 25 }), S({ dmgInc: 6 }), N("Quick Knives", { atkSpeed: 10, firstHitDmg: 15 }), S({ evasionInc: 12 }), N("Shadow Footwork", { evasionInc: 30, dodgeCdRed: 12 })] }],
+  },
+  drifter: {
+    startMods: { str: 4, dex: 4 },
+    ring: { id: "ring_dr", specs: [S({ str: 6 }), S({ dmgInc: 6 }), N("Scarred Veteran", { life: 20, armour: 30, dmgInc: 8 }), S({ life: 10 }), S({ armour: 20 })] },
+    spoke: { key: "strdex", from: "start", specs: [S({ dmgInc: 6 }), S({ life: 10 }), N("Sellsword's Habit", { dmgInc: 8, atkSpeed: 5, flaskGainInc: 15 }), S({ str: 3, dex: 3 })] },
+    wings: [{ id: "wing_drifter", deg: 90, specs: [S({ dmgInc: 6 }), S({ flaskRecInc: 10 }), N("Sellblade's Edge", { dmgInc: 14, arcInc: 10 }), S({ flaskGainInc: 10 }), N("Hip Flask", { flaskRecInc: 25, flaskGainInc: 25, life: 15 })] }],
+  },
+  reaver: {
+    startMods: { str: 8 },
+    ring: { id: "ring_rb", specs: [S({ str: 6 }), S({ regen: 0.6 }), N("Blood and Bronze", { life: 15, armour: 25, resist: 8 }), S({ armourInc: 10 }), S({ resist: 6 })] },
+    spoke: { key: "str", from: "start", specs: [S({ life: 10 }), S({ dmgInc: 6 }), N("Heavy Hands", { dmgInc: 14, kbInc: 15, spirit: 15 }), S({ str: 6 })] },
+    wings: [
+      { id: "wing_reaver_0", deg: 126, specs: [S({ armour: 20 }), S({ armourInc: 12 }), S({ life: 10 }), N("Tempered Hide", { armour: 50, armourInc: 25, life: 15 })] },
+      { id: "wing_reaver_1", deg: 174, specs: [S({ life: 12 }), S({ dmgInc: 6 }), N("Iron Gut", { lifeInc: 12, regen: 1.5 }), S({ dmgInc: 6 }), N("Pit Fury", { dmgInc: 18, atkSpeed: 6 })] },
+    ],
+  },
+  bellwarden: {
+    startMods: { int: 4, str: 4 },
+    ring: { id: "ring_bg", specs: [S({ int: 6 }), S({ barrierInc: 10 }), N("Candle Litany", { barrier: 15, regen: 1, resist: 8, spirit: 15 }), S({ barrier: 12 })] },
+    spoke: { key: "intstr", from: "start", specs: [S({ armour: 20 }), S({ barrier: 10 }), N("Tempered Faith", { armourInc: 15, barrierInc: 15, resist: 6, spirit: 15 }), S({ int: 3, str: 3 })] },
+    wings: [{ id: "wing_bellwarden", deg: 210, specs: [S({ armour: 20 }), S({ dmgInc: 6 }), N("Ringing Blows", { dmgInc: 14, kbInc: 15, armour: 20 }), S({ barrier: 12 }), N("Bronze Lungs", { armour: 40, barrier: 20, lifeInc: 6 })] }],
+  },
+};
+
+/** Attribute keys of a class ("STR / DEX" -> ["str", "dex"]). */
+function classAttrs(c: ClassDef): ("str" | "dex" | "int")[] {
+  const out = c.attrs.toLowerCase().split("/").map((x) => x.trim()).filter((x): x is "str" | "dex" | "int" => x === "str" || x === "dex" || x === "int");
+  return out.length ? out : ["str", "dex", "int"];
+}
+const split = (keys: string[], total: number): PassiveMods => Object.fromEntries(keys.map((k) => [k, Math.round(total / keys.length)]));
+/** Offence / defence flavour per attribute for generated wings. */
+const ATTR_OFF: Record<string, PassiveMods> = { str: { dmgInc: 6 }, dex: { atkSpeed: 4 }, int: { spellInc: 8 } };
+const ATTR_DEF: Record<string, PassiveMods> = { str: { armour: 20 }, dex: { evasion: 25 }, int: { barrier: 12 } };
+
+/** Generated defaults for a class without (part of) a CLASS_TREE entry. */
+function treeSpec(c: ClassDef): Required<Omit<ClassTreeSpec, "spoke">> & { spoke: ClassTreeSpec["spoke"] } {
+  const own = CLASS_TREE[c.id] ?? {};
+  const at = classAttrs(c);
+  const a0 = at[0];
+  const a1 = at[1] ?? at[0];
+  return {
+    startMods: own.startMods ?? split(at, 8),
+    ring: own.ring ?? { id: `ring_${c.id}`, specs: [S(split(at, 6)), S(ATTR_DEF[a0]), N("Crossroads", { ...split(at, 6), life: 10 }), S({ life: 10 })] },
+    spoke:
+      own.spoke !== undefined
+        ? own.spoke
+        : { key: c.id, from: "start", specs: [S(ATTR_DEF[a1]), S(ATTR_OFF[a0]), N("Wayfarer's Resolve", { ...ATTR_OFF[a0], ...ATTR_DEF[a1], life: 10 })] },
+    wings: own.wings ?? [
+      { id: `wing_${c.id}`, deg: 0, specs: [S(ATTR_DEF[a0]), S(ATTR_OFF[a0]), N("Path of Mastery", { ...ATTR_OFF[a0], dmgInc: 10, spellInc: 10 }), S(ATTR_DEF[a1]), N("Path of Endurance", { ...ATTR_DEF[a1], life: 20 })] },
+    ],
+  };
+}
+
+/** Ring angle per class: its `treeDeg`, or the middle of the widest gap left between placed starts. */
+function placeClasses(): { c: ClassDef; deg: number }[] {
+  const norm = (d: number) => ((d % 360) + 360) % 360;
+  const placed = CLASSES.filter((c) => c.treeDeg !== undefined).map((c) => ({ c, deg: c.treeDeg! }));
+  for (const c of CLASSES) {
+    if (c.treeDeg !== undefined) continue;
+    let deg = 90;
+    if (placed.length) {
+      const ds = placed.map((p) => norm(p.deg)).sort((a, b) => a - b);
+      let best = -1;
+      for (let i = 0; i < ds.length; i++) {
+        const a = ds[i];
+        const b = i + 1 < ds.length ? ds[i + 1] : ds[0] + 360;
+        if (b - a > best) {
+          best = b - a;
+          deg = a + (b - a) / 2;
+        }
+      }
+    }
+    placed.push({ c, deg });
+  }
+  // clockwise ring order (start angles kept as given, so existing coordinates never move)
+  return placed.sort((a, b) => norm(a.deg) - norm(b.deg));
+}
+
+const PLACED = placeClasses();
+const SPECS = new Map(PLACED.map(({ c }) => [c.id, treeSpec(c)]));
+for (const { c, deg } of PLACED) {
   const p = polar(deg, R);
-  add(`start_${cls}`, name, "start", p.x, p.y, mods, { cls });
+  add(c.start, `${c.name}'s Mark`, "start", p.x, p.y, SPECS.get(c.id)!.startMods, { cls: c.id });
 }
 add("hub", "Heart of the Lattice", "small", 0, 0, { allAttr: 6 });
 
@@ -247,63 +372,70 @@ function arc(prefix: string, from: string, to: string, d0: number, d1: number, s
   link(prev, to);
 }
 
-// The ring. Gate nodes join the two classes of a shared pure region; the region's spoke starts there.
-arc("gate_int", "start_gloamcaller", "start_lanternwright", -104, -76, [{ name: "Gate of the Mind", mods: { int: 10 } }]);
-arc("ring_lm", "start_lanternwright", "start_mistrunner", -76, -30, [
-  S({ barrier: 12 }), S({ int: 6 }), N("Lamplit Fog", { evasion: 30, barrier: 20, dex: 5, int: 5 }), S({ evasion: 25 }),
-]);
-arc("ring_mh", "start_mistrunner", "start_harrier", -30, 16, [
-  S({ dex: 6 }), S({ castSpeed: 4 }), N("Quickened Mind", { castSpeed: 8, atkSpeed: 6 }), S({ atkSpeed: 4 }),
-]);
-arc("gate_dex", "start_harrier", "start_gutterblade", 16, 44, [{ name: "Gate of the Hand", mods: { dex: 10 } }]);
-arc("ring_gd", "start_gutterblade", "start_drifter", 44, 90, [
-  S({ moveInc: 3 }), S({ evasionInc: 12 }), N("Road-Worn Soles", { moveInc: 6, dodgeCdRed: 10 }), S({ dex: 6 }),
-]);
-arc("ring_dr", "start_drifter", "start_reaver", 90, 150, [
-  S({ str: 6 }), S({ dmgInc: 6 }), N("Scarred Veteran", { life: 20, armour: 30, dmgInc: 8 }), S({ life: 10 }), S({ armour: 20 }),
-]);
-arc("ring_rb", "start_reaver", "start_bellwarden", 150, 210, [
-  S({ str: 6 }), S({ regen: 0.6 }), N("Blood and Bronze", { life: 15, armour: 25, resist: 8 }), S({ armourInc: 10 }), S({ resist: 6 }),
-]);
-arc("ring_bg", "start_bellwarden", "start_gloamcaller", 210, 256, [
-  S({ int: 6 }), S({ barrierInc: 10 }), N("Candle Litany", { barrier: 15, regen: 1, resist: 8, spirit: 15 }), S({ barrier: 12 }),
-]);
+// The ring: each class owns the arc clockwise to the next start. Gate nodes join the two classes of a
+// shared pure region; that region's spoke starts there.
+PLACED.forEach(({ c, deg }, i) => {
+  if (PLACED.length < 2) return;
+  const next = PLACED[(i + 1) % PLACED.length];
+  let d1 = next.deg;
+  while (d1 <= deg) d1 += 360;
+  const ring = SPECS.get(c.id)!.ring;
+  arc(ring.id, c.start, next.c.start, deg, d1, ring.specs);
+});
 
-// Spokes from each region to the hub.
-const SPOKES: [key: string, from: string, specs: Spec[]][] = [
-  ["int", "gate_int_0", [S({ barrier: 10 }), S({ mana: 10 }), N("Gathered Dusk", { barrierInc: 20, manaInc: 15, spirit: 20 }), S({ int: 6 })]],
-  ["dexint", "start_mistrunner", [S({ evasion: 25 }), S({ barrier: 10 }), N("Drifting Haze", { evasionInc: 15, barrierInc: 15 }), S({ dex: 3, int: 3 })]],
-  ["dex", "gate_dex_0", [S({ atkSpeed: 4 }), S({ evasion: 25 }), N("Hunter's Cadence", { atkSpeed: 10, moveInc: 3, spirit: 15 }), S({ dex: 6 })]],
-  ["strdex", "start_drifter", [S({ dmgInc: 6 }), S({ life: 10 }), N("Sellsword's Habit", { dmgInc: 8, atkSpeed: 5, flaskGainInc: 15 }), S({ str: 3, dex: 3 })]],
-  ["str", "start_reaver", [S({ life: 10 }), S({ dmgInc: 6 }), N("Heavy Hands", { dmgInc: 14, kbInc: 15, spirit: 15 }), S({ str: 6 })]],
-  ["intstr", "start_bellwarden", [S({ armour: 20 }), S({ barrier: 10 }), N("Tempered Faith", { armourInc: 15, barrierInc: 15, resist: 6, spirit: 15 }), S({ int: 3, str: 3 })]],
-];
-for (const [key, from, specs] of SPOKES) {
+// Spokes from each region to the hub (built in ring order so the region keys are stable).
+const SPOKE_KEYS: string[] = [];
+for (const { c } of PLACED) {
+  const sp = SPECS.get(c.id)!;
+  if (!sp.spoke) continue;
+  const from = sp.spoke.from === "ring" ? `${sp.ring.id}_0` : c.start;
   const f = nodes.get(from)!;
-  chain(`spoke_${key}`, from, "hub", f.x, f.y, 0, 0, specs);
+  if (CLASS_TREE[c.id]?.spoke) {
+    chain(`spoke_${sp.spoke.key}`, from, "hub", f.x, f.y, 0, 0, sp.spoke.specs);
+    SPOKE_KEYS.push(sp.spoke.key);
+  }
+}
+// Generated spokes (classes without hand-made tree data) run partway in and join the nearest
+// hand-made spoke, so they never cut through the keystones around the hub.
+for (const { c } of PLACED) {
+  const sp = SPECS.get(c.id)!;
+  if (!sp.spoke || CLASS_TREE[c.id]?.spoke) continue;
+  const f = nodes.get(c.start)!;
+  const k = 0.62; // end point at 62% of the ring radius
+  const ex = f.x * k;
+  const ey = f.y * k;
+  let join = "hub";
+  let jd = Math.hypot(ex, ey);
+  for (const key of SPOKE_KEYS) {
+    for (let i = 0; nodes.has(`spoke_${key}_${i}`); i++) {
+      const n = nodes.get(`spoke_${key}_${i}`)!;
+      const d = Math.hypot(n.x - ex, n.y - ey);
+      if (d < jd) {
+        jd = d;
+        join = n.id;
+      }
+    }
+  }
+  chain(`spoke_${sp.spoke.key}`, c.start, join, f.x, f.y, ex, ey, sp.spoke.specs);
+  SPOKE_KEYS.push(sp.spoke.key);
 }
 
-// Wings: outward branches from each class start (3 small + a notable).
+// Wings: outward branches from each class start. Each class gets an offence notable early on its wing
+// and a defence / utility notable at the end, so its archetype is a few points from the start instead
+// of a trip through the hub. Generated wings point straight out (deg 0 = the start's own angle).
 function wing(id: string, from: string, deg: number, specs: Spec[]) {
   const f = nodes.get(from)!;
   const e = polar(deg, 260);
   chain(id, from, null, f.x, f.y, f.x + e.x, f.y + e.y, specs);
 }
-// Each class gets an offence notable early on its wing and a defence / utility notable at the end,
-// so its archetype is a few points from the start instead of a trip through the hub.
-wing("wing_gloamcaller", "start_gloamcaller", -118, [S({ barrier: 12 }), S({ spellInc: 8 }), N("Dusk Litany", { spellInc: 20, castSpeed: 6 }), S({ barrierInc: 10 }), N("Veilwright", { barrierInc: 30, barrier: 20 })]);
-wing("wing_lanternwright", "start_lanternwright", -62, [S({ mana: 10 }), S({ castSpeed: 4 }), N("Ember Lexicon", { spellInc: 20, castSpeed: 8, manaRegenInc: 20 }), S({ spellInc: 8 }), N("Kindled Glass", { barrier: 25, fullBarrierDmg: 15 })]);
-wing("wing_mistrunner", "start_mistrunner", -30, [S({ evasion: 25 }), S({ atkSpeed: 4 }), N("Reed Forms", { dmgInc: 14, atkSpeed: 6 }), S({ dodgeCdRed: 6 }), N("Tidal Footing", { evasion: 40, dodgeCdRed: 10, regen: 1 })]);
-wing("wing_harrier", "start_harrier", 4, [S({ atkSpeed: 4 }), S({ dmgInc: 6 }), N("Fletcher's Rhythm", { atkSpeed: 10, dmgInc: 10 }), S({ evasion: 25 }), N("Long Shadow", { firstHitDmg: 20, reach: 12 })]);
-wing("wing_gutterblade", "start_gutterblade", 56, [S({ evasion: 25 }), S({ dmgInc: 6 }), N("Quick Knives", { atkSpeed: 10, firstHitDmg: 15 }), S({ evasionInc: 12 }), N("Shadow Footwork", { evasionInc: 30, dodgeCdRed: 12 })]);
-wing("wing_drifter", "start_drifter", 90, [S({ dmgInc: 6 }), S({ flaskRecInc: 10 }), N("Sellblade's Edge", { dmgInc: 14, arcInc: 10 }), S({ flaskGainInc: 10 }), N("Hip Flask", { flaskRecInc: 25, flaskGainInc: 25, life: 15 })]);
-wing("wing_reaver_0", "start_reaver", 126, [S({ armour: 20 }), S({ armourInc: 12 }), S({ life: 10 }), N("Tempered Hide", { armour: 50, armourInc: 25, life: 15 })]);
-wing("wing_reaver_1", "start_reaver", 174, [S({ life: 12 }), S({ dmgInc: 6 }), N("Iron Gut", { lifeInc: 12, regen: 1.5 }), S({ dmgInc: 6 }), N("Pit Fury", { dmgInc: 18, atkSpeed: 6 })]);
-wing("wing_bellwarden", "start_bellwarden", 210, [S({ armour: 20 }), S({ dmgInc: 6 }), N("Ringing Blows", { dmgInc: 14, kbInc: 15, armour: 20 }), S({ barrier: 12 }), N("Bronze Lungs", { armour: 40, barrier: 20, lifeInc: 6 })]);
+for (const { c, deg } of PLACED) {
+  for (const w of SPECS.get(c.id)!.wings) wing(w.id, c.start, CLASS_TREE[c.id]?.wings ? w.deg : deg + w.deg, w.specs);
+}
 
 // Keystones sit between two neighbouring spokes and hang off both spoke notables (not the hub), so
 // each one is close to the classes of its two regions and a long detour for everyone else.
 function keystone(id: string, name: string, deg: number, spokes: [string, string], mods: PassiveMods, desc: string[]) {
+  if (!spokes.every((k) => nodes.has(`spoke_${k}_2`))) return; // a region left the class list
   const a = polar(deg, 165);
   const b = polar(deg, 235);
   add(`${id}_path`, "Balance", "small", a.x, a.y, { allAttr: 4 });
@@ -320,7 +452,7 @@ keystone("ks_ashen", "Ashen Covenant", 240, ["intstr", "int"], { noBarrierRechar
 
 // Jewel sockets (PoE2-style): one off the outer node of each spoke. Allocate the socket, then drag a
 // jewel from the inventory onto it; its modifiers apply while socketed (server/progression.ts).
-for (const [key] of SPOKES) {
+for (const key of SPOKE_KEYS) {
   const a = nodes.get(`spoke_${key}_0`)!;
   const len = Math.hypot(a.x, a.y) || 1;
   // Offset sideways from the spoke (perpendicular), a little inward.

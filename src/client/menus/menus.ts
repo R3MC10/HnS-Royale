@@ -18,6 +18,7 @@ import type { ClientConn } from "../../net/transport";
 import { MENU_CSS } from "./style";
 import { initInGameSocial } from "./ingame";
 import { CLASS_SELECT_CSS, renderClassSelect } from "./classshow";
+import { PATCHNOTES_CSS, openPatchNotes, patchNotesDue } from "./patchnotes";
 import { drawClassEmblem } from "../classpick";
 
 /** Build version, injected by esbuild (scripts/build.mjs, dev.mjs); shown bottom-right on every menu screen. */
@@ -140,7 +141,7 @@ const className = (id: string) => CLASS_BY_ID.get(id)?.name ?? id;
 export function initMenus(h: MenuHooks): Menus {
   const { net, overlay } = h;
   const style = el("style");
-  style.textContent = MENU_CSS + CLASS_SELECT_CSS;
+  style.textContent = MENU_CSS + CLASS_SELECT_CSS + PATCHNOTES_CSS;
   document.head.appendChild(style);
 
   let root = document.getElementById("menu-root");
@@ -268,6 +269,7 @@ export function initMenus(h: MenuHooks): Menus {
     const browse = btn("Play · Find a room", "primary", () => nameOk() && renderBrowser(), "ui.confirm");
     const hostB = btn("Create room", "", () => nameOk() && startHosting(), "ui.confirm");
     const opts = btn("Options", "", () => openOptions());
+    const notes = btn("Patch notes", "", () => openPatchNotes(R, () => name.focus()));
     const appQuit = (window as unknown as { HNS_APP?: { quit: () => void } }).HNS_APP?.quit;
     const quit = appQuit ? btn("Quit game", "", () => appQuit()) : btn("Quit to title", "", () => renderTitle());
     statusEl = el("div", "m-status", msg);
@@ -293,9 +295,11 @@ export function initMenus(h: MenuHooks): Menus {
       status("Connecting to the dedicated server…");
       net.connect();
     });
-    p.append(el("h1", "m-title mid", "HnS Royale"), el("div", "m-sub", "Gather. Gear up. Be the last."), el("label", "m-label", "Name"), name, browse, hostB, opts, quit, statusEl, ded);
+    p.append(el("h1", "m-title mid", "HnS Royale"), el("div", "m-sub", "Gather. Gear up. Be the last."), el("label", "m-label", "Name"), name, browse, hostB, opts, notes, quit, statusEl, ded);
     R.append(p);
     name.focus();
+    // Patch notes open by themselves once per new client version (never during a match: the main menu is not shown then).
+    if (patchNotesDue(APP_VERSION)) openPatchNotes(R, () => name.focus());
   }
 
   // ---- lobby browser ----------------------------------------------------------------
@@ -308,7 +312,13 @@ export function initMenus(h: MenuHooks): Menus {
     head.style.justifyContent = "space-between";
     const ttl = el("h2", "m-title mid", "Rooms");
     const right = el("div", "m-row");
-    right.append(btn("Back", "small", () => renderMain()));
+    const refreshB = btn("Refresh", "small", () => {
+      lobby.refresh();
+      polls = 0;
+      box.replaceChildren(Object.assign(el("div", "m-empty"), { innerHTML: '<span class="m-spin"></span>Looking for rooms…' }));
+    });
+    refreshB.id = "m-refresh";
+    right.append(refreshB, btn("Back", "small", () => renderMain()));
     head.append(ttl, right);
     // Create a room, or join one by its code (the list below joins by code too).
     const codeRow = el("div", "m-row");
@@ -333,6 +343,7 @@ export function initMenus(h: MenuHooks): Menus {
     createB.id = "m-create-room";
     codeRow.append(createB, el("span", "m-label", "or join by code"), codeIn, joinB);
     const box = el("div", "m-scroll");
+    let polls = 0;
     statusEl = el("div", "m-status", lobby.error);
     p.append(head, codeRow, el("div", "m-h", "Open rooms"), box, statusEl, el("div", "m-note", "Rooms are found through public relays (and your local network in the desktop app); nobody runs a server. The host's machine runs the match."));
     R.append(p);
@@ -360,9 +371,17 @@ export function initMenus(h: MenuHooks): Menus {
         code.dataset.noi18n = "";
         const nm = el("td");
         nm.append(el("b", "", l.name), document.createTextNode(" "));
-        nm.append(el("span", l.state === "match" ? "m-tag busy" : "m-tag", l.state === "match" ? "In match" : "In hall"));
+        const lateOpen = l.state === "match" && l.joinable === true;
+        nm.append(el("span", l.state === "match" && !lateOpen ? "m-tag busy" : "m-tag", lateOpen ? "Match running · you can join" : l.state === "match" ? "In match" : "In hall"));
+        if (lateOpen && l.lateLeft) {
+          const left = el("span", "m-tag", `${Math.floor(l.lateLeft / 60)}:${String(l.lateLeft % 60).padStart(2, "0")}`);
+          left.dataset.noi18n = "";
+          left.title = "Time left to join the running match";
+          nm.append(document.createTextNode(" "), left);
+        }
         if (r.lan) nm.append(document.createTextNode(" "), el("span", "m-tag", "LAN"));
-        const full = l.players >= l.max;
+        // Newer hosts say whether a seat is open (a running match also swaps out a bot for you).
+        const full = l.joinable !== undefined ? !l.joinable : l.players >= l.max;
         const join = btn(full ? "Full" : "Join", "small primary", () => void joinGame(r.code), "ui.confirm");
         join.disabled = full;
         const tdj = el("td", "num");
@@ -375,7 +394,6 @@ export function initMenus(h: MenuHooks): Menus {
     };
     box.append(Object.assign(el("div", "m-empty"), { innerHTML: '<span class="m-spin"></span>Looking for rooms…' }));
     // The first ads take a few seconds to come in over the relays: keep the spinner a moment.
-    let polls = 0;
     const load = () => {
       if (screen !== "browser") return;
       const list = lobby.list();

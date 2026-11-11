@@ -187,6 +187,22 @@ const TITLE_SIZE = 4;
  * magic monsters show mods only when focused. Plates that would overlap earlier ones stack upward.
  * Returns true when it handled the monster (render.ts then skips its default bar).
  */
+/** Life bar colours by side: allies green, enemies red, neutral jungle mobs yellow. */
+export const HP_ALLY = "#5cc04a";
+export const HP_ENEMY = "#d8402e";
+export const HP_NEUTRAL = "#e0b030";
+let viewTeam: number | undefined;
+/** The local player's Breachway team (undefined in Royale, where everything else is an enemy). */
+export function setViewTeam(tm: number | undefined) {
+  viewTeam = tm;
+}
+/** Bar colour for something on team `tm` (Breachway); no team = neutral in Breachway, an enemy in Royale. */
+export function sideColor(tm: number | undefined): string {
+  if (viewTeam === undefined) return HP_ENEMY;
+  if (tm === undefined) return HP_NEUTRAL;
+  return tm === viewTeam ? HP_ALLY : HP_ENEMY;
+}
+
 export function drawMonLabel(fx: MonFx, m: MonsterSnap, damaged: boolean, top: number, o?: MonLabelOpts): boolean {
   const focus = !!o?.focus;
   if (!m.rr && !m.gm && !focus) return false;
@@ -207,7 +223,7 @@ export function drawMonLabel(fx: MonFx, m: MonsterSnap, damaged: boolean, top: n
       g.save();
       g.globalAlpha *= 0.3;
     }
-    fx.bar(x - Math.floor(bw / 2), y, bw, m.hp / m.mhp, rr === 3 ? "#d8873a" : rr === 2 ? "#e8a03a" : "#c8402e");
+    fx.bar(x - Math.floor(bw / 2), y, bw, m.hp / m.mhp, sideColor(m.tm));
     if (over) g.restore();
   }
   if (o?.bare) {

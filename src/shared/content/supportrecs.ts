@@ -22,6 +22,8 @@ export const SKILL_SUPPORT_RECS: Record<string, string[]> = {
   wheeling_glaive: ["arcing_link", "heavy_hand", "bloodthirst", "scattershot"],
   stormcall_sigil: ["broadened_ruin", "heavy_hand", "quickened_rite", "frugal_sigil"],
   stormvault: ["broadened_ruin", "heavy_hand", "swift_recall", "bloodthirst"],
+  opening_cut: ["heavy_hand", "quickened_rite", "bloodthirst", "cindertouch"],
+  hazeward_sweep: ["heavy_hand", "rimebite", "bloodthirst", "quickened_rite"],
   riposte_arc: ["heavy_hand", "bloodthirst", "quickened_rite"],
   rending_chop: ["broadened_ruin", "heavy_hand", "bloodthirst"],
   longreach_thrust: ["heavy_hand", "quickened_rite", "bloodthirst"],

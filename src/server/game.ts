@@ -116,6 +116,8 @@ export class Game implements CombatHost {
   phaseLeft = 0;
   /** Seconds of fight played this round (0 before it; frozen on the round-end screen). Sent as SnapMsg.ft. */
   fightTime = 0;
+  /** Set by the hall while a late joiner's "join" runs (no "spectating" line for them). */
+  lateJoining = false;
   winner: string | null = null;
   tick = 0;
   events: GameEvent[] = [];
@@ -255,9 +257,9 @@ export class Game implements CombatHost {
     } else if (this.phase === "waiting" || this.phase === "countdown") {
       this.spawn(p, this.practiceSpawnSpot());
     } else {
-      p.alive = false; // spectate until the next round
+      p.alive = false; // spectate until the next round (a late joiner is placed right after: lateSpawn)
       p.hp = 0;
-      this.events.push({ k: "info", text: `${p.name} is spectating until the next round` });
+      if (!this.lateJoining) this.events.push({ k: "info", text: `${p.name} is spectating until the next round` });
     }
     this.events.push({ k: "info", text: `${p.name} joined` });
     return true;
@@ -451,6 +453,23 @@ export class Game implements CombatHost {
       p.team = undefined;
       if (p.alive) this.spawn(p, this.practiceSpawnSpot());
     }
+  }
+
+  /** Late join into a running fight (its first minutes): a fresh hero, away from the living. */
+  lateSpawn(p: ServerPlayer, team?: 0 | 1) {
+    if (this.lanes) return this.lanes.addLate(p, team);
+    const pts = this.spawnChoices.length ? this.spawnChoices : currentMap().spawns;
+    let best = pts[0] ?? this.practiceSpawnSpot();
+    let bd = -1;
+    for (const c of pts) {
+      let d = Infinity;
+      for (const o of this.players.values()) if (o !== p && o.joined && o.alive) d = Math.min(d, Math.hypot(o.x - c.x, o.y - c.y));
+      if (d > bd) {
+        bd = d;
+        best = c;
+      }
+    }
+    this.spawn(p, freeSpotNear(best.x, best.y, PLAYER_RADIUS));
   }
 
   /** Free spawn choice farthest from the taken ones (-1 if none is free). */

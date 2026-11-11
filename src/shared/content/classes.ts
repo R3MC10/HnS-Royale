@@ -1,6 +1,7 @@
 // Per-match progression content: base classes, the XP curve, XP rewards and attribute rules.
 // Every name here is original to this project. Logic lives in src/server/progression.ts and
 // src/shared/progression.ts (shared stat math).
+import type { PassiveMods } from "./passives";
 import type { WeaponKind } from "./types";
 
 // ---- tunables -----------------------------------------------------------------
@@ -117,6 +118,18 @@ export interface ClassDef {
   playstyle: string;
   /** How forgiving the class is for a new player: 1 straightforward, 2 moderate, 3 demanding. */
   difficulty: 1 | 2 | 3;
+  /** Bright identity colour: tree heatmap region, showcase accents, legends. */
+  color: string;
+  /** Starting skill gem id (gems.ts), socketed on RMB each match. Must be usable with the class weapon. */
+  starter: string;
+  /** Signature class trait: a small innate passive every match (added in totalMods, shared/progression.ts);
+   *  its lines are the passive labels (modLines), so they translate like tree nodes. */
+  trait: { name: string; mods: PassiveMods };
+  /**
+   * Passive tree placement (passives.ts): angle of the class start on the outer ring, degrees (-90 = up).
+   * Omit it and the tree builder puts the class in the widest gap between existing starts.
+   */
+  treeDeg?: number;
 }
 
 /**
@@ -147,6 +160,10 @@ export const CLASSES: ClassDef[] = [
     ascendancies: ["bloodsworn", "stonewarden", "pitking"],
     playstyle: "Close-range bruiser: wade in with big axe blows and let armour soak the hits.",
     difficulty: 1,
+    color: "#e0533a",
+    starter: "sundering_blow",
+    trait: { name: "Pit-Fed", mods: { lifeOnKill: 4 } },
+    treeDeg: 150,
   },
   {
     id: "harrier",
@@ -160,6 +177,10 @@ export const CLASSES: ClassDef[] = [
     ascendancies: ["windrunner", "huntmaster", "gallowsbow"],
     playstyle: "Ranged skirmisher: keep moving, keep distance, rain arrows from cover.",
     difficulty: 2,
+    color: "#6cc35a",
+    starter: "splinter_volley",
+    trait: { name: "Light Feet", mods: { dodgeCdRed: 12 } },
+    treeDeg: 16,
   },
   {
     id: "gutterblade",
@@ -173,6 +194,10 @@ export const CLASSES: ClassDef[] = [
     ascendancies: ["alleyknife", "ratking", "debtcollector"],
     playstyle: "Hit-and-run duellist: fast dagger strikes, then roll out before they answer.",
     difficulty: 3,
+    color: "#d0457a",
+    starter: "opening_cut",
+    trait: { name: "First Cut", mods: { firstHitDmg: 20 } },
+    treeDeg: 44,
   },
   {
     id: "gloamcaller",
@@ -186,6 +211,10 @@ export const CLASSES: ClassDef[] = [
     ascendancies: ["hexweaver", "mothwarden", "dirgesinger"],
     playstyle: "Caster behind a barrier: spells from a distance, energy shield instead of armour.",
     difficulty: 2,
+    color: "#8a7af0",
+    starter: "glacial_lance",
+    trait: { name: "Dusk Drinker", mods: { barrierOnKill: 12 } },
+    treeDeg: -104,
   },
   {
     id: "lanternwright",
@@ -199,6 +228,10 @@ export const CLASSES: ClassDef[] = [
     ascendancies: ["pyrebinder", "beaconkeeper", "tallowsworn"],
     playstyle: "Fire caster: burn crowds from range with wand spells; fragile up close.",
     difficulty: 2,
+    color: "#ffb83a",
+    starter: "cinderbolt",
+    trait: { name: "Caged Flame", mods: { killNova: 10 } },
+    treeDeg: -76,
   },
   {
     id: "drifter",
@@ -212,6 +245,10 @@ export const CLASSES: ClassDef[] = [
     ascendancies: ["edgewalker", "oathbreaker", "roadwarden"],
     playstyle: "All-rounder: sword in hand, armour and evasion, fits any build you find.",
     difficulty: 1,
+    color: "#9fb4d0",
+    starter: "reaping_whirl",
+    trait: { name: "Scavenger", mods: { chargesOnKill: 1 } },
+    treeDeg: 90,
   },
   {
     id: "mistrunner",
@@ -225,6 +262,10 @@ export const CLASSES: ClassDef[] = [
     ascendancies: ["fogdancer", "marshlight", "reedpilgrim"],
     playstyle: "Mobile hybrid: long staff reach, evasion and a little barrier; rewards good footwork.",
     difficulty: 3,
+    color: "#4fc8c0",
+    starter: "hazeward_sweep",
+    trait: { name: "Out of the Haze", mods: { postRollDmg: 12 } },
+    treeDeg: -30,
   },
   {
     id: "bellwarden",
@@ -238,6 +279,10 @@ export const CLASSES: ClassDef[] = [
     ascendancies: ["toller", "shrinekeeper", "ironcantor"],
     playstyle: "Armoured battle-mage: heavy mace blows backed by armour and a barrier.",
     difficulty: 2,
+    color: "#c8904c",
+    starter: "faultline_slam",
+    trait: { name: "Bell Toll", mods: { splash: 5 } },
+    treeDeg: 210,
   },
 ];
 

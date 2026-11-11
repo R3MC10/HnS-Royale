@@ -8,12 +8,13 @@ export const PL: Dict = {
   // ---- title / main menu ----
   "Full loot. Last one standing.": "Pełny łup. Zostaje tylko jeden.", "Click to begin": "Kliknij, aby zacząć", "Your name": "Twoje imię", Name: "Imię",
   "Play · Browse games": "Graj · Przeglądaj gry", "Host a game": "Załóż grę", Options: "Opcje", "Quit to title": "Wyjdź do ekranu tytułowego", "Quit game": "Wyjdź z gry",
+  "Patch notes": "Lista zmian", "Changes from the last 7 days": "Zmiany z ostatnich 7 dni", New: "Nowości", Changes: "Zmiany", Fixes: "Poprawki", Close: "Zamknij",
   "Dev: join this page's dedicated server": "Dev: dołącz do serwera dedykowanego tej strony", "Connecting to the dedicated server…": "Łączenie z serwerem dedykowanym…",
   "Gather. Gear up. Be the last.": "Zbierz się. Uzbrój. Zostań ostatni.", "Choose a name first.": "Najpierw wybierz imię.",
   "Your tab is in the background: you are hosting, keep this tab visible for a smooth game.": "Twoja karta jest w tle: jesteś hostem, trzymaj ją na widoku, żeby gra działała płynnie.",
   // browser
   "Open games": "Otwarte gry", Refresh: "Odśwież", "Host instead": "Załóż własną", Back: "Wstecz", Lobby: "Lobby", Host: "Host", Players: "Gracze", Biome: "Kraina",
-  Size: "Rozmiar", Ping: "Ping", Join: "Dołącz", Cancel: "Anuluj", "In match": "W meczu", "In hall": "W sali", Full: "Pełna", Random: "Losowa", Auto: "Auto",
+  Size: "Rozmiar", Ping: "Ping", Join: "Dołącz", Cancel: "Anuluj", "In match": "W meczu", "Match running · you can join": "Mecz trwa · możesz dołączyć", "Time left to join the running match": "Czas na dołączenie do trwającego meczu", "In hall": "W sali", Full: "Pełna", Random: "Losowa", Auto: "Auto",
   "Ping is an estimate (your and the host's latency to the lobby service). Games are hosted by players: the host's machine runs the match.":
     "Ping jest szacunkowy (opóźnienie twoje i hosta do usługi lobby). Gry zakładają gracze: mecz działa na komputerze hosta.",
   "No open games right now. Host one and others will see it here.": "Nie ma teraz otwartych gier. Załóż własną, a inni zobaczą ją tutaj.",
@@ -66,7 +67,10 @@ export const PL: Dict = {
   "Painted sprites": "Malowane postacie", "Hand-painted heroes, monsters, ground and props (procedural art where none exists).": "Ręcznie malowani bohaterowie, potwory, podłoże i rekwizyty (tam, gdzie ich brak – grafika proceduralna).",
   Gore: "Brutalność", "Blood, gibs and dismemberment. Off shows none.": "Krew, szczątki i rozczłonkowanie. „Wył.” nie pokazuje niczego.", Off: "Wył.", On: "Wł.", Reduced: "Ograniczona",
   Extreme: "Skrajna", "Persistent blood": "Trwała krew", "Blood stays on the ground for the whole match instead of fading.": "Krew zostaje na ziemi przez cały mecz, zamiast znikać.",
-  "Performance overlay": "Nakładka wydajności", "Show FPS": "Pokaż FPS", "Show ping": "Pokaż ping", Layout: "Układ", "UI scale": "Skala interfejsu",
+  "Performance overlay": "Nakładka wydajności", "Freeze log": "Dziennik zacięć", "Copy freeze log": "Kopiuj dziennik zacięć",
+  "Frames that froze for over 150 ms and what happened just before. Paste it into a bug report.": "Klatki, które zacięły się na ponad 150 ms, i co działo się tuż przed nimi. Wklej go do zgłoszenia błędu.",
+  "Could not copy the freeze log.": "Nie udało się skopiować dziennika zacięć.", "Freeze log copied ({n} freezes).": (n) => `Skopiowano dziennik zacięć (${n} ${plural(n, "zacięcie", "zacięcia", "zacięć")}).`,
+  "Freeze log copied (no freezes so far).": "Skopiowano dziennik zacięć (na razie bez zacięć).", "Freeze {n} ms": "Zacięcie {n} ms", "Show FPS": "Pokaż FPS", "Show ping": "Pokaż ping", Layout: "Układ", "UI scale": "Skala interfejsu",
   "HUD, panels and this menu.": "HUD, panele i to menu.", Map: "Mapa", "Show corner map": "Pokaż mapę w rogu", "Minimap size": "Rozmiar minimapy", "Minimap opacity": "Krycie minimapy",
   "Overlay map opacity": "Krycie mapy nakładanej", "The see-through map on the map overlay key (Tab).": "Półprzezroczysta mapa pod klawiszem mapy nakładanej (Tab).",
   "Overlay map zoom": "Powiększenie mapy nakładanej", Chat: "Czat", "Chat text size": "Rozmiar tekstu czatu", "Chat opacity": "Krycie czatu", "Combat text": "Tekst walki",
@@ -241,6 +245,8 @@ export const PL: Dict = {
   "Weapons follow the kind you are holding.": "Broń jest tego rodzaju, który trzymasz.",
   "Crystals become skill and support gems (cut them in your inventory).": "Kryształy stają się kamieniami umiejętności i wsparcia (oszlifuj je w ekwipunku).",
   "Click an item to sell it for a quarter of its price (rare and better: click twice). H or Esc closes.": "Kliknij przedmiot, aby sprzedać go za ćwierć ceny (rzadkie i lepsze: kliknij dwa razy). H lub Esc zamyka.",
+  "Click an item to sell it for a quarter of its price (rare and better: click twice). Ctrl+click items in your inventory to sell them, worn gear too. H or Esc closes.": "Kliknij przedmiot, aby sprzedać go za ćwierć ceny (rzadkie i lepsze: kliknij dwa razy). Ctrl+klik na przedmiocie w ekwipunku też go sprzedaje, nawet założony. H lub Esc zamyka.",
+  "Ctrl+click {name} again to sell for {n} gold": "Ctrl+klik na {name} jeszcze raz, aby sprzedać za {n} złota",
   "Rogue exiles will march with the {x} waves": "Wyrzutkowie będą maszerować z falami drużyny: {x}",
   "This trial shrine answers only its own side": "Ta kapliczka próby odpowiada tylko swojej stronie",
   // Breachway Quartermaster: Enhance and Reinforcements tabs (lanehud.ts, shared/laneshop.ts, server/modes/lanes.ts)
@@ -315,6 +321,7 @@ export const PL: Dict = {
   "Take the support out": "Wyjmij wsparcie",
   // hall: character selection
   "Starting attributes": "Atrybuty startowe", "Starting weapon": "Broń startowa", "Starting skill": "Umiejętność startowa", Playstyle: "Styl gry",
+  "Class trait": "Cecha klasy", "Your class": "Twoja klasa", "Innate to your class, every match": "Wrodzona dla twojej klasy, w każdym meczu",
   Difficulty: "Trudność", Straightforward: "Przystępna", Moderate: "Umiarkowana", Demanding: "Wymagająca", Bots: "Boty",
   "Ascendancies · trial at level {n}": "Wyniesienia · próba na poziomie {n}",
   "Close-range bruiser: wade in with big axe blows and let armour soak the hits.": "Zabijaka do walki z bliska: wchodzi w tłum z ciężkim toporem, a pancerz przyjmuje ciosy.",

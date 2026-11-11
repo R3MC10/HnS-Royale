@@ -102,6 +102,10 @@ const N = {
   exileGold: 100,
   exileLife: 2.5,
   structGold: { lane_outer: 80, lane_inner: 120, lane_ward: 160, lane_core: 0 } as Record<StructKind, number>,
+  /** Structure energy shield: share of max life, recharge delay after a hit (s), recharge per second (share of max). */
+  structEs: 0.25,
+  structEsDelay: 4,
+  structEsRate: 0.125,
   structLife: { lane_outer: 4500, lane_inner: 7200, lane_ward: 5000, lane_core: 9000 } /* doc x0.6: the sim ran 30+ min */ as Record<StructKind, number>,
   pvpMult: 0.6,
 };
@@ -285,6 +289,20 @@ export class LaneMode {
     for (const p of this.g.players.values()) p.team = undefined;
   }
 
+  /** A player joining the running match: the given (or smaller) team, starting gold, at its base. */
+  addLate(p: ServerPlayer, team?: Team) {
+    if (team === undefined) {
+      const counts = [0, 0];
+      for (const o of this.g.players.values()) if (o !== p && o.joined && o.team !== undefined) counts[o.team]++;
+      team = counts[0] <= counts[1] ? 0 : 1;
+    }
+    p.team = team;
+    const n = [...this.g.players.values()].filter((o) => o.joined && o.team === team).length;
+    p.color = TEAM_PLAYER_COLORS[team][(n - 1 + TEAM_PLAYER_COLORS[team].length) % TEAM_PLAYER_COLORS[team].length];
+    this.gold.set(p.id, N.goldStart);
+    this.g.spawn(p, this.respawnSpot(team));
+  }
+
   respawnSpot(team: Team) {
     const r = LANE.respawn[team];
     return { x: r.x + (Math.random() - 0.5) * 120, y: r.y + (Math.random() - 0.5) * 120 };
@@ -302,6 +320,7 @@ export class LaneMode {
     const m = this.g.monsters.spawnLoose(t, { x: STRUCT_X[k][team], y: LANE.y }, false, 0);
     m.maxHp = Math.round(N.structLife[k] * Math.max(0.6, this.teamSize / 5));
     m.hp = m.maxHp;
+    m.esMax = m.es = Math.round(m.maxHp * N.structEs);
     m.speed = 0;
     m.angle = team === 0 ? 0 : Math.PI;
     if (m.ext) m.ext.ccResist = 1;
@@ -450,6 +469,9 @@ export class LaneMode {
         if (!mobNear) dmg *= 0.3;
       }
       u.hitT = this.t;
+      // Energy shield takes the hit first; a fully absorbed hit still counts as a hit (not immune).
+      const left = this.absorbEs(m, dmg);
+      return left > 0 ? left : dmg > 0 ? 1e-6 : 0;
     } else if (by) {
       u.aggroP = by.id;
       u.aggroT = 3;
@@ -485,8 +507,10 @@ export class LaneMode {
       target.hitT = this.t;
     }
     if (m.ext && (m.ext.invulnT > 0 || (m.ext.exile && m.ext.exile.rollT > 0))) return;
+    const full = dmg;
+    if (target.kind === "struct") dmg = this.absorbEs(m, dmg);
     m.hp -= dmg;
-    this.g.events.push({ k: "hit", x: Math.round(m.x), y: Math.round(m.y), target: m.id, by: 0, dmg: Math.round(dmg * 10) / 10, m: 1 });
+    this.g.events.push({ k: "hit", x: Math.round(m.x), y: Math.round(m.y), target: m.id, by: 0, dmg: Math.round(full * 10) / 10, m: 1 });
     if (m.hp <= 0) {
       this.g.events.push({ k: "mdie", id: m.id, mk: m.type.id, x: Math.round(m.x), y: Math.round(m.y), r: m.radius, a: Math.round(m.angle * 100) / 100, ...(m.elite ? { el: 1 as const } : {}) });
       this.g.monsters.kill(m);
@@ -793,8 +817,19 @@ export class LaneMode {
     return false;
   }
 
+  /** Structure energy shield soaks damage first; returns what is left for life. */
+  private absorbEs(m: Monster, dmg: number): number {
+    const es = m.es ?? 0;
+    if (es <= 0 || dmg <= 0) return dmg;
+    const soak = Math.min(es, dmg);
+    m.es = es - soak;
+    return dmg - soak;
+  }
+
   private structTick(u: Unit) {
     const m = u.m;
+    // Energy shield recharges once the structure has gone a few seconds without a hit.
+    if (m.esMax && (m.es ?? 0) < m.esMax && this.t - u.hitT > N.structEsDelay) m.es = Math.min(m.esMax, (m.es ?? 0) + m.esMax * N.structEsRate * DT);
     if (u.sk === "lane_ward") return; // the Ward does not shoot
     if (u.sk === "lane_core" && this.t - u.hitT > N.coreRegenDelay && m.hp < m.maxHp && !this.enemyNear(u.team, m.x, m.y, 1000)) m.hp = Math.min(m.maxHp, m.hp + m.maxHp * 0.01 * DT);
     const core = u.sk === "lane_core";
@@ -1042,9 +1077,9 @@ export class LaneMode {
       case "sell": {
         const it = carriedItem(p, msg.id);
         if (!it) return "No such item";
-        if (!p.inv.some((e) => e.it === it)) return "Take it off first"; // bag items only (not worn gear, belt flasks, charms)
+        // Bag, worn gear, belt flasks and charms all sell (worn gear comes off first; stats refresh).
         const value = this.sellValue(it);
-        dropById(p, it.id, () => {});
+        dropById(p, it.id, (d) => d !== it && this.g.dropItem(d, p.x, p.y));
         this.addGold(p, value);
         this.g.toast(p, `Sold ${it.n} for ${value} gold`);
         return null;

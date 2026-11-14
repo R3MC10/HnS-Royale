@@ -1,0 +1,98 @@
+{
+  "Reaver": {
+    "source": "a_highly_detailed_dark_fantasy_character_design_sh.png",
+    "original_size": [
+      1536,
+      1024
+    ],
+    "upscaled_size": [
+      4096,
+      2731
+    ],
+    "note": "Lossless PNG upscaled from generated image, not native 4K or valid PBR texture"
+  },
+  "Harrier": {
+    "source": "highly_detailed_concept_art_character_sheet_a_da.png",
+    "original_size": [
+      1536,
+      1024
+    ],
+    "upscaled_size": [
+      4096,
+      2731
+    ],
+    "note": "Lossless PNG upscaled from generated image, not native 4K or valid PBR texture"
+  },
+  "Gutterblade": {
+    "source": "a_highly_detailed_concept_art_character_sheet_comp.png",
+    "original_size": [
+      1536,
+      1024
+    ],
+    "upscaled_size": [
+      4096,
+      2731
+    ],
+    "note": "Lossless PNG upscaled from generated image, not native 4K or valid PBR texture"
+  },
+  "Gloamcaller": {
+    "source": "a_highly_detailed_cinematic_concept_art_character.png",
+    "original_size": [
+      1536,
+      1024
+    ],
+    "upscaled_size": [
+      4096,
+      2731
+    ],
+    "note": "Lossless PNG upscaled from generated image, not native 4K or valid PBR texture"
+  },
+  "Lanternwright": {
+    "source": "a_highly_detailed_character_concept_sheet_in_a_stu.png",
+    "original_size": [
+      1536,
+      1024
+    ],
+    "upscaled_size": [
+      4096,
+      2731
+    ],
+    "note": "Lossless PNG upscaled from generated image, not native 4K or valid PBR texture"
+  },
+  "Drifter": {
+    "source": "a_highly_detailed_game_concept_character_sheet_on.png",
+    "original_size": [
+      1536,
+      1024
+    ],
+    "upscaled_size": [
+      4096,
+      2731
+    ],
+    "note": "Lossless PNG upscaled from generated image, not native 4K or valid PBR texture"
+  },
+  "Mistrunner": {
+    "source": "a_highly_detailed_cinematic_concept_character_she.png",
+    "original_size": [
+      1672,
+      941
+    ],
+    "upscaled_size": [
+      4096,
+      2305
+    ],
+    "note": "Lossless PNG upscaled from generated image, not native 4K or valid PBR texture"
+  },
+  "Bellwarden": {
+    "source": "a_highly_detailed_composite_character_design_sheet.png",
+    "original_size": [
+      384,
+      512
+    ],
+    "upscaled_size": [
+      4096,
+      5461
+    ],
+    "note": "Cropped from eight-class overview, NOT a standalone full-detail character sheet; 4K upscaled"
+  }
+}
